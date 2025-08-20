@@ -3,16 +3,22 @@ cluster_nodes:
 
   global:
     ssh_connection:
+      username: andreyvladimirskiy
+      port: 22
+      private_key: ""
+      use_hostname_to_connect: false
 
   bastion:
+    enabled: true
     hostname: de1348.cxense.com
     port: 3022
     username: andreyvladimirskiy
+    private_key: ""
 
   control_plane:
-    - hostname: node-01
-      public_ip: 192.168.1.101
-      private_ip: 10.0.0.1
+    - hostname: de1572.cxense.com
+      public_ip: 162.55.151.170
+      private_ip: 10.16.32.227
       role: control-plane
       location: us-west-1a
       labels:
@@ -23,9 +29,9 @@ cluster_nodes:
         kubelet:
           extra_args:
             - "--node-labels=node-role.kubernetes.io/control-plane=true"
-    - hostname: node-02
-      public_ip: 192.168.1.102
-      private_ip: 10.0.0.2
+    - hostname: de1573.cxense.com
+      public_ip: 162.55.151.171
+      private_ip: 10.16.32.246
       role: control-plane
       location: us-west-1a
       labels:
@@ -36,9 +42,9 @@ cluster_nodes:
         kubelet:
           extra_args:
             - "--node-labels=node-role.kubernetes.io/control-plane=true"
-    - hostname: node-03
-      public_ip: 192.168.1.103
-      private_ip: 10.0.0.3
+    - hostname: de1574.cxense.com
+      public_ip: 162.55.151.172
+      private_ip: 10.16.32.212
       role: control-plane
       location: us-west-1a
       labels:
