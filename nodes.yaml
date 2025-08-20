@@ -1,0 +1,81 @@
+---
+cluster_nodes:
+
+  global:
+    ssh_connection:
+
+  bastion:
+    hostname: de1348.cxense.com
+    port: 3022
+    username: andreyvladimirskiy
+
+  control_plane:
+    - hostname: node-01
+      public_ip: 192.168.1.101
+      private_ip: 10.0.0.1
+      role: control-plane
+      location: us-west-1a
+      labels:
+        environment: production
+        team: platform
+      kubernetes:
+        version: 1.31.0
+        kubelet:
+          extra_args:
+            - "--node-labels=node-role.kubernetes.io/control-plane=true"
+    - hostname: node-02
+      public_ip: 192.168.1.102
+      private_ip: 10.0.0.2
+      role: control-plane
+      location: us-west-1a
+      labels:
+        environment: production
+        team: platform
+      kubernetes:
+        version: 1.31.0
+        kubelet:
+          extra_args:
+            - "--node-labels=node-role.kubernetes.io/control-plane=true"
+    - hostname: node-03
+      public_ip: 192.168.1.103
+      private_ip: 10.0.0.3
+      role: control-plane
+      location: us-west-1a
+      labels:
+        environment: production
+        team: platform
+      kubernetes:
+        version: 1.31.0
+        kubelet:
+          extra_args:
+            - "--node-labels=node-role.kubernetes.io/control-plane=true"
+  worker:
+    - hostname: node-04
+      public_ip: 192.168.1.104
+      private_ip: 10.0.0.4
+      role: worker
+      location: us-west-1a
+      labels:
+        environment: production
+        team: applications
+        workload-type: general
+      kubernetes:
+        version: 1.31.0
+        kubelet:
+          extra_args:
+            - "--node-labels=node-role.kubernetes.io/worker=true"
+    - hostname: node-05
+      public_ip: 192.168.1.105
+      private_ip: 10.0.0.5
+      role: worker
+      location: us-west-1a
+      labels:
+        environment: production
+        team: applications
+        workload-type: general
+      kubernetes:
+        version: 1.31.0
+        kubelet:
+          extra_args:
+            - "--node-labels=node-role.kubernetes.io/worker=true"
+
