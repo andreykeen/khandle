@@ -1,0 +1,9 @@
+.DS_store
+.terraform.lock.hcl
+.terraform/
+*.tar.gz
+terraform.tfstate
+terraform.tfstate.backup
+tf.json
+.env
+output.json
