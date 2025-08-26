@@ -3,32 +3,19 @@ global:
   ssh_connection:
     port: 22
     username: ubuntu
-    private_key: "~/.ssh/aws-khandle-cluster-nodes"
+    private_key: ~/.ssh/aws-khandle-cluster-nodes
     connect_through: public_ip # Possible values: hostname, public_ip, private_ip
-    use_bastion: false
+    use_bastion: true
 
 bastion:
-  hostname: de1348.cxense.com
-  port: 3022
-  username: andreyvladimirskiy
-  private_key: ""
+  address: 3.123.128.116
+  port: 22
+  username: ubuntu
+  private_key: ~/.ssh/aws-khandle-bastion-node
 
 control_planes:
   - hostname: nd01
-    public_ip: 18.193.84.207
-    private_ip: 10.0.0.237
-    role: control-plane
-    location: eu-central-1a
-    labels:
-      environment: production
-      team: platform
-    kubernetes:
-      version: 1.31.0
-      kubelet:
-        extra_args:
-          - "--node-labels=node-role.kubernetes.io/control-plane=true"
-  - hostname: nd02
-    public_ip: 18.153.209.130
+    public_ip: 3.72.49.192
     private_ip: 10.0.0.143
     role: control-plane
     location: eu-central-1a
@@ -40,9 +27,9 @@ control_planes:
       kubelet:
         extra_args:
           - "--node-labels=node-role.kubernetes.io/control-plane=true"
-  - hostname: nd03
-    public_ip: 3.79.239.191
-    private_ip: 10.0.0.201
+  - hostname: nd02
+    public_ip: 63.176.167.0
+    private_ip: 10.0.0.107
     role: control-plane
     location: eu-central-1a
     labels:
@@ -53,109 +40,16 @@ control_planes:
       kubelet:
         extra_args:
           - "--node-labels=node-role.kubernetes.io/control-plane=true"
-workers:
-  - hostname: node-04
-    public_ip: 192.168.1.104
-    private_ip: 10.0.0.4
-    role: worker
-    location: us-west-1a
+  - hostname: nd03
+    public_ip: 3.76.205.243
+    private_ip: 10.0.0.29
+    role: control-plane
+    location: eu-central-1a
     labels:
       environment: production
-      team: applications
-      workload-type: general
+      team: platform
     kubernetes:
       version: 1.31.0
       kubelet:
         extra_args:
-          - "--node-labels=node-role.kubernetes.io/worker=true"
-  - hostname: node-05
-    public_ip: 192.168.1.105
-    private_ip: 10.0.0.5
-    role: worker
-    location: us-west-1a
-    labels:
-      environment: production
-      team: applications
-      workload-type: general
-    kubernetes:
-      version: 1.31.0
-      kubelet:
-        extra_args:
-          - "--node-labels=node-role.kubernetes.io/worker=true"
-
-
-
-
-
-
-
-# control_planes:
-#   - hostname: de1572.cxense.com
-#     public_ip: 162.55.151.170
-#     private_ip: 10.16.32.227
-#     role: control-plane
-#     location: us-west-1a
-#     labels:
-#       environment: production
-#       team: platform
-#     kubernetes:
-#       version: 1.31.0
-#       kubelet:
-#         extra_args:
-#           - "--node-labels=node-role.kubernetes.io/control-plane=true"
-#   - hostname: de1573.cxense.com
-#     public_ip: 162.55.151.171
-#     private_ip: 10.16.32.246
-#     role: control-plane
-#     location: us-west-1a
-#     labels:
-#       environment: production
-#       team: platform
-#     kubernetes:
-#       version: 1.31.0
-#       kubelet:
-#         extra_args:
-#           - "--node-labels=node-role.kubernetes.io/control-plane=true"
-#   - hostname: de1574.cxense.com
-#     public_ip: 162.55.151.172
-#     private_ip: 10.16.32.212
-#     role: control-plane
-#     location: us-west-1a
-#     labels:
-#       environment: production
-#       team: platform
-#     kubernetes:
-#       version: 1.31.0
-#       kubelet:
-#         extra_args:
-#           - "--node-labels=node-role.kubernetes.io/control-plane=true"
-# workers:
-#   - hostname: node-04
-#     public_ip: 192.168.1.104
-#     private_ip: 10.0.0.4
-#     role: worker
-#     location: us-west-1a
-#     labels:
-#       environment: production
-#       team: applications
-#       workload-type: general
-#     kubernetes:
-#       version: 1.31.0
-#       kubelet:
-#         extra_args:
-#           - "--node-labels=node-role.kubernetes.io/worker=true"
-#   - hostname: node-05
-#     public_ip: 192.168.1.105
-#     private_ip: 10.0.0.5
-#     role: worker
-#     location: us-west-1a
-#     labels:
-#       environment: production
-#       team: applications
-#       workload-type: general
-#     kubernetes:
-#       version: 1.31.0
-#       kubelet:
-#         extra_args:
-#           - "--node-labels=node-role.kubernetes.io/worker=true"
-
+          - "--node-labels=node-role.kubernetes.io/control-plane=true"

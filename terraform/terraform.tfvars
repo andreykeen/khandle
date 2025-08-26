@@ -15,6 +15,6 @@ control_plane_nodes = [
 
 
 
-route53_zone_id     = "Z092271731TJRKIUUCEJK"
-route53_zone_name   = "iodized.link"
-route53_record_name = "ha"
+# route53_zone_id     = "Z092271731TJRKIUUCEJK"
+# route53_zone_name   = "iodized.link"
+# route53_record_name = "ha"

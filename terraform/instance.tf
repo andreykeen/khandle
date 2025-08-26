@@ -8,6 +8,15 @@ resource "aws_key_pair" "key_pair" {
   }
 }
 
+resource "aws_key_pair" "bastion_key_pair" {
+  key_name   = "khandle-cluster-bastion"
+  public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJGcwcFh8uDdVJRNXRgJJqSF+hQVtbJvofzDSuOh3sLf AWS khandle bastion node"
+  tags = {
+    Name    = "khandle-bastion"
+    managed = "terraform"
+  }
+}
+
 data "aws_ami" "ubuntu" {
   most_recent = true
   owners      = ["099720109477"] # Canonical
@@ -43,7 +52,20 @@ resource "aws_instance" "control_plane_node" {
   tags = {
     Name         = "${each.key}"
     hostname     = "${each.key}"
-    cluster_role = "control-plane"
+  }
+}
+
+resource "aws_instance" "bastion" {
+  ami                         = data.aws_ami.ubuntu.id
+  instance_type               = "t3.micro"
+  key_name                    = aws_key_pair.bastion_key_pair.key_name
+  subnet_id                   = aws_subnet.subnet[0].id
+  associate_public_ip_address = true
+  vpc_security_group_ids      = [aws_security_group.instance_security_group.id]
+  user_data                   = data.cloudinit_config.instance_config.rendered
+  tags = {
+    Name         = "bastion"
+    hostname     = "bastion"
   }
 }
 
