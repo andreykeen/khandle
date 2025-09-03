@@ -5,18 +5,18 @@ global:
     username: ubuntu
     private_key: ~/.ssh/aws-khandle-cluster-nodes
     connect_through: public_ip # Possible values: hostname, public_ip, private_ip
-    use_bastion: true
+    use_bastion: false
 
 bastion:
-  address: 3.123.128.116
+  address: 18.185.88.204
   port: 22
   username: ubuntu
   private_key: ~/.ssh/aws-khandle-bastion-node
 
 control_planes:
   - hostname: nd01
-    public_ip: 3.72.49.192
-    private_ip: 10.0.0.143
+    public_ip: 3.75.173.2
+    private_ip: 10.0.0.38
     role: control-plane
     location: eu-central-1a
     labels:
@@ -28,8 +28,8 @@ control_planes:
         extra_args:
           - "--node-labels=node-role.kubernetes.io/control-plane=true"
   - hostname: nd02
-    public_ip: 63.176.167.0
-    private_ip: 10.0.0.107
+    public_ip: 18.199.166.213
+    private_ip: 10.0.0.144
     role: control-plane
     location: eu-central-1a
     labels:
@@ -41,8 +41,8 @@ control_planes:
         extra_args:
           - "--node-labels=node-role.kubernetes.io/control-plane=true"
   - hostname: nd03
-    public_ip: 3.76.205.243
-    private_ip: 10.0.0.29
+    public_ip: 3.79.229.25
+    private_ip: 10.0.0.43
     role: control-plane
     location: eu-central-1a
     labels:
@@ -53,3 +53,18 @@ control_planes:
       kubelet:
         extra_args:
           - "--node-labels=node-role.kubernetes.io/control-plane=true"
+
+worker_nodes:
+  - hostname: nd04
+    public_ip: 3.72.49.192
+    private_ip: 10.0.0.143
+    role: worker
+    location: eu-central-1a
+    labels:
+      environment: production
+      team: platform
+    kubernetes:
+      version: 1.31.0
+      kubelet:
+        extra_args:
+          - "--node-labels=node-role.kubernetes.io/worker=true"
