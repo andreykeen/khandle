@@ -15,8 +15,8 @@ bastion:
 
 control_planes:
   - hostname: nd01
-    public_ip: 3.123.19.13
-    private_ip: 10.0.0.82
+    public_ip: 3.71.203.203
+    private_ip: 10.0.0.59
     location: eu-central-1a
     labels:
       environment: production
@@ -26,18 +26,18 @@ control_planes:
       kubelet:
         extra_args:
           - "--node-labels=node-role.kubernetes.io/control-plane=true"
-  # - hostname: nd02
-  #   public_ip: 63.177.248.88
-  #   private_ip: 10.0.0.46
-  #   location: eu-central-1a
-  #   labels:
-  #     environment: production
-  #     team: platform
-  #   kubernetes:
-  #     version: 1.31.0
-  #     kubelet:
-  #       extra_args:
-  #         - "--node-labels=node-role.kubernetes.io/control-plane=true"
+  - hostname: nd02
+    public_ip: 3.79.184.130
+    private_ip: 10.0.0.214
+    location: eu-central-1a
+    labels:
+      environment: production
+      team: platform
+    kubernetes:
+      version: 1.31.0
+      kubelet:
+        extra_args:
+          - "--node-labels=node-role.kubernetes.io/control-plane=true"
   # - hostname: nd03
   #   public_ip: 3.79.115.23
   #   private_ip: 10.0.0.187

@@ -247,19 +247,24 @@ function manage_control_plane() {
         print_status "info" "Managing control plane nodes only"
     fi
 
+    # Only use the first control plane node for the initialisation
+    local control_plane_main_node="$(yq e ".control_planes[0].hostname" "$NODES_FILE")"
+
     local control_plane_count=$(yq e '.control_planes | length' "$NODES_FILE")
     for ((i=0; i<control_plane_count; i++)); do
         hostname=$(yq e ".control_planes[$i].hostname" "$NODES_FILE")
-        print_status "info" "Managing control plane node $hostname"
+
         sysctl_configuration $hostname
         load_modules $hostname
         install_runtime $hostname
         install_haproxy $hostname
 
-        if [ $i -eq 0 ]; then
+        if [ "$hostname" = "$control_plane_main_node" ]; then
             kubeadm_init $hostname
             install_helm $hostname
             install_calico $hostname
+        else
+            kubeadm_join $hostname
         fi
 
     done
@@ -307,31 +312,51 @@ EOF"
 ##########################################
 function install_runtime() {
     local node="$1"
-    print_status "info" "Installing runtime on node $node"
 
-    run_commands_on_node $node "sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gpg containerd libnginx-mod-stream"
-    run_commands_on_node $node "sudo mkdir -p /etc/containerd"
-    run_commands_on_node $node "sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null"
-    run_commands_on_node $node "sudo sed -ri 's/^(\s*)SystemdCgroup\s*=.*/\1SystemdCgroup = true/' /etc/containerd/config.toml"
-    run_commands_on_node $node "sudo systemctl daemon-reload"
-    run_commands_on_node $node "sudo systemctl enable --now containerd"
-    run_commands_on_node $node "sudo systemctl restart containerd"
+    run_commands_on_node $node "sudo whereis containerd | sed 's/^.*://g'"
+    if [ -z "$RETURN_OUTPUT" ]; then
+        print_status "info" "Installing containerd on node $node"
 
-    run_commands_on_node $node "sudo tee /etc/crictl.yaml > /dev/null <<EOF
+        run_commands_on_node $node "sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gpg containerd libnginx-mod-stream"
+        run_commands_on_node $node "sudo mkdir -p /etc/containerd"
+        run_commands_on_node $node "sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null"
+        run_commands_on_node $node "sudo sed -ri 's/^(\s*)SystemdCgroup\s*=.*/\1SystemdCgroup = true/' /etc/containerd/config.toml"
+        run_commands_on_node $node "sudo systemctl daemon-reload"
+        run_commands_on_node $node "sudo systemctl enable --now containerd"
+        run_commands_on_node $node "sudo systemctl restart containerd"
+    else
+        print_status "info" "containerd is already installed on node $node"
+    fi
+
+    run_commands_on_node $node "sudo test -f /etc/crictl.yaml && echo 'exists' || echo 'doesnotexist'"
+    if [ "$RETURN_OUTPUT" = "doesnotexist" ]; then
+        print_status "info" "Creating crictl configuration on node $node"
+
+        run_commands_on_node $node "sudo tee /etc/crictl.yaml > /dev/null <<EOF
 runtime-endpoint: unix:///run/containerd/containerd.sock
 image-endpoint: unix:///run/containerd/containerd.sock
 timeout: 10
 debug: false
 EOF"
+    else
+        print_status "info" "crictl configuration already exists on node $node"
+    fi
 
-    run_commands_on_node $node "sudo mkdir -p -m 755 /etc/apt/keyrings"
-    run_commands_on_node $node "curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg"
-    run_commands_on_node $node "sudo chmod 0644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg"
-    run_commands_on_node $node "echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list"
-    run_commands_on_node $node "sudo apt-get update && \
-        sudo apt-get install -y kubelet kubeadm kubectl && \
-        sudo apt-mark hold kubelet kubeadm kubectl && \
-        sudo systemctl enable --now kubelet"
+    run_commands_on_node $node "sudo whereis kubelet | sed 's/^.*://g'"
+    if [ -z "$RETURN_OUTPUT" ]; then
+        print_status "info" "Installing kubelet kubeadm kubectl on node $node"
+
+        run_commands_on_node $node "sudo mkdir -p -m 755 /etc/apt/keyrings"
+        run_commands_on_node $node "curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+        run_commands_on_node $node "sudo chmod 0644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+        run_commands_on_node $node "echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list"
+        run_commands_on_node $node "sudo apt-get update && \
+            sudo apt-get install -y kubelet kubeadm kubectl && \
+            sudo apt-mark hold kubelet kubeadm kubectl && \
+            sudo systemctl enable --now kubelet"
+    else
+        print_status "info" "kubelet kubeadm kubectl are already installed on node $node"
+    fi
 }
 
 
@@ -340,11 +365,20 @@ EOF"
 ##########################################
 function install_haproxy() {
     local node="$1"
-    print_status "info" "Installing haproxy on node $node"
 
-    run_commands_on_node $node "sudo apt-get update && sudo apt-get install -y haproxy"
+    run_commands_on_node $node "sudo whereis haproxy | sed 's/^.*://g'"
+    if [ -z "$RETURN_OUTPUT" ]; then
+        print_status "info" "Installing haproxy on node $node"
+        run_commands_on_node $node "sudo apt-get update && sudo apt-get install -y haproxy \
+            && sudo systemctl enable --now haproxy && sudo systemctl start haproxy"
+    else
+        print_status "info" "haproxy is already installed on node $node"
+    fi
+
+
     # Generate HAProxy config with dynamic server entries
-    local haproxy_config="global
+    local haproxy_config="
+global
     log /dev/log    local0
     log /dev/log    local1 notice
     chroot /var/lib/haproxy
@@ -387,7 +421,7 @@ backend control-plane
 $haproxy_config
 EOF"
 
-    run_commands_on_node $node "sudo systemctl enable --now haproxy && sudo systemctl restart haproxy"
+    run_commands_on_node $node "sudo systemctl reload haproxy"
 }
 
 
@@ -396,25 +430,56 @@ EOF"
 ##########################################
 function kubeadm_init() {
     local node="$1"
-    print_status "info" "Initialising control plane on node $node"
+
     run_commands_on_node $node "test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
     if [ "$RETURN_OUTPUT" = "doesnotexist" ]; then
-        run_commands_on_node $node "sudo kubeadm init --pod-network-cidr=172.16.0.0/18 --control-plane-endpoint=127.0.0.1:6444 --apiserver-cert-extra-sans=127.0.0.1 --upload-certs"
-        print_status "info" "Successfully initialised control plane on node $node"
+        print_status "info" "Initialising control plane on node $node"
+        run_commands_on_node $node "sudo kubeadm init --pod-network-cidr=172.16.0.0/18 --control-plane-endpoint=127.0.0.1:6444 --apiserver-cert-extra-sans=127.0.0.1"
     else
-        print_status "info" "Control plane already initialised on node $node"
+        print_status "info" "Control plane is already initialised on node $node"
     fi
+
+# kubeadm init phase upload-certs --upload-certs
+# kubeadm token create --print-join-command
+# --control-plane --certificate-key
 }
 
+function kubeadm_join() {
+    local node="$1"
+
+    run_commands_on_node $node "test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
+    if [ "$RETURN_OUTPUT" = "doesnotexist" ]; then
+        print_status "info" "Joining node $node to the control plane"
+
+        # Get the token from the control plane main node
+        local control_plane_main_node="$(yq e ".control_planes[0].hostname" "$NODES_FILE")"
+        run_commands_on_node $control_plane_main_node "sudo kubeadm init phase upload-certs --upload-certs | grep -v 'upload-certs'"
+        local certificate_key=$RETURN_OUTPUT
+        run_commands_on_node $control_plane_main_node "sudo kubeadm token create --print-join-command"
+        local join_command=$RETURN_OUTPUT
+        join_command="$join_command --control-plane --certificate-key $certificate_key"
+
+        run_commands_on_node $node "sudo $join_command"
+
+    else
+        print_status "info" "Node $node is already joined to the control plane"
+    fi
+
+}
 
 ##########################################
 # Install Helm
 ##########################################
 function install_helm() {
     local node="$1"
-    print_status "info" "Installing Helm on node $node"
 
-    run_commands_on_node $node "curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash"
+    run_commands_on_node $node "sudo whereis helm | sed 's/^.*://g'"
+    if [ -z "$RETURN_OUTPUT" ]; then
+        print_status "info" "Installing helm on node $node"
+        run_commands_on_node $node "curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash"
+    else
+        print_status "info" "helm is already installed on node $node"
+    fi
 }
 
 
@@ -423,9 +488,12 @@ function install_helm() {
 ##########################################
 function install_calico() {
     local node="$1"
-    print_status "info" "Installing Calico in the cluster using node $node"
 
-    run_commands_on_node $node "sudo tee /tmp/calico-values.yaml > /dev/null <<EOF
+    run_commands_on_node $node "sudo helm --kubeconfig /etc/kubernetes/admin.conf --namespace tigera-operator list --no-headers"
+    if [ -z "$RETURN_OUTPUT" ]; then
+        print_status "info" "Installing Calico on node $node"
+
+        run_commands_on_node $node "sudo tee /tmp/calico-values.yaml > /dev/null <<EOF
 ---
 installation:
   cni:
@@ -441,13 +509,18 @@ installation:
         nodeSelector: all()
 EOF"
 
-    run_commands_on_node $node "sudo helm repo add projectcalico https://docs.tigera.io/calico/charts && helm repo update"
-    run_commands_on_node $node "sudo helm install calico projectcalico/tigera-operator \
-        --kubeconfig /etc/kubernetes/admin.conf \
-        --version v3.30.3 \
-        --namespace tigera-operator \
-        --create-namespace \
-        --values /tmp/calico-values.yaml"
+        run_commands_on_node $node "sudo helm repo add projectcalico https://docs.tigera.io/calico/charts && sudo helm repo update"
+        run_commands_on_node $node "sudo helm install calico projectcalico/tigera-operator \
+            --kubeconfig /etc/kubernetes/admin.conf \
+            --version v3.30.3 \
+            --namespace tigera-operator \
+            --create-namespace \
+            --values /tmp/calico-values.yaml"
+    else
+        print_status "info" "Calico is already installed on node $node"
+    fi
+
+
 }
 
 
