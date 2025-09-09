@@ -21,3 +21,13 @@
 # output "load_balancer" {
 #   value = aws_lb.load_balancer
 # }
+
+
+output "control_plane_nodes" {
+  value = {
+    for k, v in aws_instance.control_plane_node : k => {
+      public_ip  = v.public_ip
+      private_ip = v.private_ip
+    }
+  }
+}

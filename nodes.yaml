@@ -8,16 +8,15 @@ global:
     use_bastion: false
 
 bastion:
-  address: 18.185.88.204
+  address: 3.124.190.79
   port: 22
   username: ubuntu
   private_key: ~/.ssh/aws-khandle-bastion-node
 
 control_planes:
   - hostname: nd01
-    public_ip: 3.75.173.2
-    private_ip: 10.0.0.38
-    role: control-plane
+    public_ip: 3.123.19.13
+    private_ip: 10.0.0.82
     location: eu-central-1a
     labels:
       environment: production
@@ -27,44 +26,27 @@ control_planes:
       kubelet:
         extra_args:
           - "--node-labels=node-role.kubernetes.io/control-plane=true"
-  - hostname: nd02
-    public_ip: 18.199.166.213
-    private_ip: 10.0.0.144
-    role: control-plane
-    location: eu-central-1a
-    labels:
-      environment: production
-      team: platform
-    kubernetes:
-      version: 1.31.0
-      kubelet:
-        extra_args:
-          - "--node-labels=node-role.kubernetes.io/control-plane=true"
-  - hostname: nd03
-    public_ip: 3.79.229.25
-    private_ip: 10.0.0.43
-    role: control-plane
-    location: eu-central-1a
-    labels:
-      environment: production
-      team: platform
-    kubernetes:
-      version: 1.31.0
-      kubelet:
-        extra_args:
-          - "--node-labels=node-role.kubernetes.io/control-plane=true"
-
-worker_nodes:
-  - hostname: nd04
-    public_ip: 3.72.49.192
-    private_ip: 10.0.0.143
-    role: worker
-    location: eu-central-1a
-    labels:
-      environment: production
-      team: platform
-    kubernetes:
-      version: 1.31.0
-      kubelet:
-        extra_args:
-          - "--node-labels=node-role.kubernetes.io/worker=true"
+  # - hostname: nd02
+  #   public_ip: 63.177.248.88
+  #   private_ip: 10.0.0.46
+  #   location: eu-central-1a
+  #   labels:
+  #     environment: production
+  #     team: platform
+  #   kubernetes:
+  #     version: 1.31.0
+  #     kubelet:
+  #       extra_args:
+  #         - "--node-labels=node-role.kubernetes.io/control-plane=true"
+  # - hostname: nd03
+  #   public_ip: 3.79.115.23
+  #   private_ip: 10.0.0.187
+  #   location: eu-central-1a
+  #   labels:
+  #     environment: production
+  #     team: platform
+  #   kubernetes:
+  #     version: 1.31.0
+  #     kubelet:
+  #       extra_args:
+  #         - "--node-labels=node-role.kubernetes.io/control-plane=true"

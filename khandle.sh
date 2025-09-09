@@ -1,7 +1,5 @@
 #!/usr/bin/env bash
 
-set -e
-
 # Colours for output
 RED='\033[0;31m'
 GREEN='\033[0;32m'
@@ -14,7 +12,8 @@ NC='\033[0m' # No Colour
 # Global variables
 COMMAND=""
 NODES_FILE=""
-VERBOSE=true
+VERBOSE=false
+RETURN_OUTPUT=""
 
 
 # Function to print coloured output
@@ -134,11 +133,6 @@ run_commands_on_node() {
     local ssh_private_key=$(yq e ".global.ssh_connection.private_key" "$nodes_file")
     local ssh_connect_through=$(yq e '.global.ssh_connection.connect_through' "$nodes_file")
     local bastion_enabled=$(yq e '.global.ssh_connection.use_bastion' "$nodes_file")
-    # print_status "info" "SSH port: $ssh_port"
-    # print_status "info" "SSH username: $ssh_username"
-    # print_status "info" "SSH private key: $ssh_private_key"
-    # print_status "info" "SSH connect through: $ssh_connect_through"
-    # print_status "info" "Bastion enabled: $bastion_enabled"
 
     local ssh_port_arg=""
     local ssh_username_arg=""
@@ -170,10 +164,6 @@ run_commands_on_node() {
         local bastion_port=$(yq e '.bastion.port' "$nodes_file")
         local bastion_username=$(yq e '.bastion.username' "$nodes_file")
         local bastion_private_key=$(yq e '.bastion.private_key' "$nodes_file")
-        # print_status "info" "Bastion address: $bastion_address"
-        # print_status "info" "Bastion port: $bastion_port"
-        # print_status "info" "Bastion username: $bastion_username"
-        # print_status "info" "Bastion private key: $bastion_private_key"
 
         if [ -z "$bastion_address" ]; then
             print_status "error" "Bastion address is required"
@@ -194,15 +184,9 @@ run_commands_on_node() {
         bastion_message="via bastion $bastion_address"
     fi
 
-    local ssh_args="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=accept-new -o GlobalKnownHostsFile=/dev/null"
-
     hostname="$node"
     public_ip=$(yq e '.control_planes[] | select(.hostname == "'$node'") | .public_ip' "$nodes_file")
     private_ip=$(yq e '.control_planes[] | select(.hostname == "'$node'") | .private_ip' "$nodes_file")
-
-    # print_status "info" "Hostname: $hostname"
-    # print_status "info" "Public IP: $public_ip"
-    # print_status "info" "Private IP: $private_ip"
 
     connection_address=$public_ip
     if [ "$ssh_connect_through" = "hostname" ]; then
@@ -211,17 +195,34 @@ run_commands_on_node() {
         connection_address=$private_ip
     fi
 
-    print_status "info" "Running '$cmd' on node $hostname ($connection_address) $bastion_message..."
-    # set -x
+    local ssh_args="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=accept-new -o GlobalKnownHostsFile=/dev/null -o LogLevel=ERROR"
+
+    if [ "$VERBOSE" = true ]; then
+        print_status "info" "Running '$cmd' on node $hostname ($connection_address) $bastion_message..."
+    fi
+
+    local ssh_exit_code
+    local output
     if [ "$bastion_enabled" = "true" ]; then
         output=$(ssh $ssh_args -o ProxyCommand="ssh -W %h:%p $bastion_private_key_arg $bastion_username_arg $bastion_port_arg $bastion_address" \
-        $ssh_private_key_arg $ssh_username_arg $ssh_port_arg $connection_address "$cmd")
+        $ssh_private_key_arg $ssh_username_arg $ssh_port_arg $connection_address "$cmd" 2>&1)
+        ssh_exit_code=$?
     else
-        output=$(ssh $ssh_args $ssh_private_key_arg $ssh_username_arg $ssh_port_arg $connection_address "$cmd")
+        output=$(ssh $ssh_args $ssh_private_key_arg $ssh_username_arg $ssh_port_arg $connection_address "$cmd" 2>&1)
+        ssh_exit_code=$?
     fi
-    echo "-------------------- OUTPUT from $hostname ($connection_address) --------------------"
-    echo "$output"
-    echo "-------------------- END OUTPUT from $hostname ($connection_address) -------------------- "
+
+    if [ $ssh_exit_code -ne 0 ]; then
+        print_status "error" "Failed to run '$cmd' on node $hostname ($connection_address) $bastion_message"
+        print_status "error" "SSH output: $output"
+        exit 1
+    fi
+    if [ "$VERBOSE" = true ]; then
+        echo "-------------------- OUTPUT from $hostname ($connection_address) --------------------"
+        echo "$output"
+        echo "-------------------- END OUTPUT from $hostname ($connection_address) -------------------- "
+    fi
+    RETURN_OUTPUT="$output"
 }
 
 
@@ -234,7 +235,6 @@ function manage_nodes() {
     fi
 
     manage_control_plane
-
     manage_worker_nodes
 }
 
@@ -247,14 +247,20 @@ function manage_control_plane() {
         print_status "info" "Managing control plane nodes only"
     fi
 
-
     local control_plane_count=$(yq e '.control_planes | length' "$NODES_FILE")
     for ((i=0; i<control_plane_count; i++)); do
         hostname=$(yq e ".control_planes[$i].hostname" "$NODES_FILE")
-        print_status "info" "Running command on node $hostname"
-        # run_commands_on_node $hostname "sudo df -h"
+        print_status "info" "Managing control plane node $hostname"
+        sysctl_configuration $hostname
+        load_modules $hostname
         install_runtime $hostname
         install_haproxy $hostname
+
+        if [ $i -eq 0 ]; then
+            kubeadm_init $hostname
+            install_helm $hostname
+            install_calico $hostname
+        fi
 
     done
 }
@@ -272,34 +278,44 @@ function manage_worker_nodes() {
 
 
 ##########################################
-# Preconfigure nodes
+# Configure sysctl
 ##########################################
-function preconfigure_nodes() {
+function sysctl_configuration() {
     local node="$1"
-    if [ "$VERBOSE" = true ]; then
-        print_status "info" "Preconfiguring nodes on node $node"
-    fi
+    print_status "info" "Configuring sysctl on node $node"
 
     run_commands_on_node $node "sudo tee /etc/sysctl.d/kubernetes.conf > /dev/null <<EOF
-net.bridge.bridge-nf-call-iptables = 1
 net.ipv4.ip_forward = 1
 EOF"
 
-    run_commands_on_node $node "sudo sysctl --system"
-
+    run_commands_on_node $node "sudo sysctl -p /etc/sysctl.d/kubernetes.conf"
 }
 
+function load_modules() {
+    local node="$1"
+    print_status "info" "Loading modules on node $node"
+
+    run_commands_on_node $node "sudo tee /etc/modules-load.d/k8s.conf > /dev/null <<EOF
+overlay
+br_netfilter
+EOF"
+    run_commands_on_node $node "sudo modprobe overlay br_netfilter"
+}
 
 ##########################################
 # Install runtime
 ##########################################
 function install_runtime() {
     local node="$1"
-    if [ "$VERBOSE" = true ]; then
-        print_status "info" "Installing runtime on node $node"
-    fi
+    print_status "info" "Installing runtime on node $node"
 
-    run_commands_on_node $node "sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gpg containerd"
+    run_commands_on_node $node "sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gpg containerd libnginx-mod-stream"
+    run_commands_on_node $node "sudo mkdir -p /etc/containerd"
+    run_commands_on_node $node "sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null"
+    run_commands_on_node $node "sudo sed -ri 's/^(\s*)SystemdCgroup\s*=.*/\1SystemdCgroup = true/' /etc/containerd/config.toml"
+    run_commands_on_node $node "sudo systemctl daemon-reload"
+    run_commands_on_node $node "sudo systemctl enable --now containerd"
+    run_commands_on_node $node "sudo systemctl restart containerd"
 
     run_commands_on_node $node "sudo tee /etc/crictl.yaml > /dev/null <<EOF
 runtime-endpoint: unix:///run/containerd/containerd.sock
@@ -310,6 +326,7 @@ EOF"
 
     run_commands_on_node $node "sudo mkdir -p -m 755 /etc/apt/keyrings"
     run_commands_on_node $node "curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg"
+    run_commands_on_node $node "sudo chmod 0644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg"
     run_commands_on_node $node "echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list"
     run_commands_on_node $node "sudo apt-get update && \
         sudo apt-get install -y kubelet kubeadm kubectl && \
@@ -323,13 +340,11 @@ EOF"
 ##########################################
 function install_haproxy() {
     local node="$1"
-    if [ "$VERBOSE" = true ]; then
-        print_status "info" "Installing haproxy on node $node"
-    fi
+    print_status "info" "Installing haproxy on node $node"
 
     run_commands_on_node $node "sudo apt-get update && sudo apt-get install -y haproxy"
-    run_commands_on_node $node "sudo tee /etc/haproxy/haproxy.cfg > /dev/null <<EOF
-global
+    # Generate HAProxy config with dynamic server entries
+    local haproxy_config="global
     log /dev/log    local0
     log /dev/log    local1 notice
     chroot /var/lib/haproxy
@@ -341,25 +356,101 @@ global
 
 defaults
     log     global
-    mode    http
-    option  httplog
+    mode    tcp
+    option  tcplog
     option  dontlognull
     timeout connect 5000
     timeout client  50000
     timeout server  50000
 
 frontend control-plane
-    bind :6444
+    bind 0.0.0.0:6444
+    mode tcp
     default_backend control-plane
 
 backend control-plane
+    mode tcp
     balance roundrobin
-    server node1 localhost:80
+    option tcp-check"
 
+    # Add server entries for each control plane node
+    local cp_count=$(yq e '.control_planes | length' "$NODES_FILE")
+    for ((j=0; j<cp_count; j++)); do
+        j_hostname=$(yq e ".control_planes[$j].hostname" "$NODES_FILE")
+        j_public_ip=$(yq e ".control_planes[$j].public_ip" "$NODES_FILE")
+        j_private_ip=$(yq e ".control_planes[$j].private_ip" "$NODES_FILE")
+        haproxy_config+="
+    server $j_hostname $j_private_ip:6443 check"
+    done
+
+    run_commands_on_node $node "sudo tee /etc/haproxy/haproxy.cfg > /dev/null <<EOF
+$haproxy_config
 EOF"
 
     run_commands_on_node $node "sudo systemctl enable --now haproxy && sudo systemctl restart haproxy"
 }
+
+
+##########################################
+# Initialise control plane
+##########################################
+function kubeadm_init() {
+    local node="$1"
+    print_status "info" "Initialising control plane on node $node"
+    run_commands_on_node $node "test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
+    if [ "$RETURN_OUTPUT" = "doesnotexist" ]; then
+        run_commands_on_node $node "sudo kubeadm init --pod-network-cidr=172.16.0.0/18 --control-plane-endpoint=127.0.0.1:6444 --apiserver-cert-extra-sans=127.0.0.1 --upload-certs"
+        print_status "info" "Successfully initialised control plane on node $node"
+    else
+        print_status "info" "Control plane already initialised on node $node"
+    fi
+}
+
+
+##########################################
+# Install Helm
+##########################################
+function install_helm() {
+    local node="$1"
+    print_status "info" "Installing Helm on node $node"
+
+    run_commands_on_node $node "curl https://raw.githubusercontent.com/helm/helm/main/scripts/get-helm-3 | bash"
+}
+
+
+##########################################
+# Install Calico
+##########################################
+function install_calico() {
+    local node="$1"
+    print_status "info" "Installing Calico in the cluster using node $node"
+
+    run_commands_on_node $node "sudo tee /tmp/calico-values.yaml > /dev/null <<EOF
+---
+installation:
+  cni:
+    type: Calico
+  calicoNetwork:
+    bgp: Disabled
+    ipPools:
+      - name: default-ipv4-ippool
+        blockSize: 26
+        cidr: 172.16.0.0/18
+        encapsulation: VXLAN
+        natOutgoing: Enabled
+        nodeSelector: all()
+EOF"
+
+    run_commands_on_node $node "sudo helm repo add projectcalico https://docs.tigera.io/calico/charts && helm repo update"
+    run_commands_on_node $node "sudo helm install calico projectcalico/tigera-operator \
+        --kubeconfig /etc/kubernetes/admin.conf \
+        --version v3.30.3 \
+        --namespace tigera-operator \
+        --create-namespace \
+        --values /tmp/calico-values.yaml"
+}
+
+
 
 ##########################################
 # Initialise control plane

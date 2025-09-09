@@ -4,10 +4,34 @@ resource "aws_security_group" "instance_security_group" {
   vpc_id = aws_vpc.vpc.id
 
   ingress {
+    from_port   = -1
+    to_port     = -1
+    protocol    = "icmp"
+    cidr_blocks = aws_subnet.subnet.*.cidr_block
+  }
+  ingress {
     from_port   = 22
     to_port     = 22
     protocol    = "tcp"
     cidr_blocks = ["0.0.0.0/0"]
+  }
+  ingress {
+    from_port   = 2379
+    to_port     = 2381
+    protocol    = "tcp"
+    cidr_blocks = aws_subnet.subnet.*.cidr_block
+  }
+  ingress {
+    from_port   = 6443
+    to_port     = 6443
+    protocol    = "tcp"
+    cidr_blocks = aws_subnet.subnet.*.cidr_block
+  }
+  ingress {
+    from_port   = 6444
+    to_port     = 6444
+    protocol    = "tcp"
+    cidr_blocks = aws_subnet.subnet.*.cidr_block
   }
   egress {
     from_port   = 0
