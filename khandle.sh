@@ -195,7 +195,7 @@ run_commands_on_node() {
         connection_address=$private_ip
     fi
 
-    local ssh_args="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=accept-new -o GlobalKnownHostsFile=/dev/null -o LogLevel=ERROR"
+    local ssh_args="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o LogLevel=ERROR"
 
     if [ "$VERBOSE" = true ]; then
         print_status "info" "Running '$cmd' on node $hostname ($connection_address) $bastion_message..."
@@ -262,7 +262,12 @@ function manage_control_plane() {
         if [ "$hostname" = "$control_plane_main_node" ]; then
             kubeadm_init $hostname
             install_helm $hostname
-            install_calico $hostname
+
+            local cni_calico=$(yq e '.cluster_network.cni.calico' "$NODES_FILE")
+            if [ "$cni_calico" != "null" ] && [ -n "$cni_calico" ]; then
+                install_calico $hostname
+            fi
+
         else
             kubeadm_join $hostname
         fi
@@ -431,19 +436,47 @@ EOF"
 function kubeadm_init() {
     local node="$1"
 
+    local apiserver_advertise_address=$(yq e '.cluster_network.apiserver_advertise_address' "$NODES_FILE")
+    local apiserver_cert_extra_sans=$(yq e '.cluster_network.apiserver_cert_extra_sans | join(",")' "$NODES_FILE")
+    local control_plane_endpoint=$(yq e '.cluster_network.control_plane_endpoint' "$NODES_FILE")
+    local pod_network_cidr=$(yq e '.cluster_network.pod_network_cidr' "$NODES_FILE")
+    local service_dns_domain=$(yq e '.cluster_network.service_dns_domain' "$NODES_FILE")
+
+    local kubeadm_init_command="sudo kubeadm init"
+
+    if [ "$apiserver_advertise_address" != "null" ] && [ -n "$apiserver_advertise_address" ]; then
+        kubeadm_init_command+=" --apiserver-advertise-address=$apiserver_advertise_address"
+    fi
+
+    if [ "$apiserver_cert_extra_sans" != "null" ] && [ -n "$apiserver_cert_extra_sans" ]; then
+        kubeadm_init_command+=" --apiserver-cert-extra-sans=$apiserver_cert_extra_sans"
+    fi
+
+    if [ "$control_plane_endpoint" != "null" ] && [ -n "$control_plane_endpoint" ]; then
+        kubeadm_init_command+=" --control-plane-endpoint=$control_plane_endpoint"
+    fi
+
+    if [ "$pod_network_cidr" != "null" ] && [ -n "$pod_network_cidr" ]; then
+        kubeadm_init_command+=" --pod-network-cidr=$pod_network_cidr"
+    fi
+
+    if [ "$service_dns_domain" != "null" ] && [ -n "$service_dns_domain" ]; then
+        kubeadm_init_command+=" --service-dns-domain=$service_dns_domain"
+    fi
+
     run_commands_on_node $node "test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
     if [ "$RETURN_OUTPUT" = "doesnotexist" ]; then
-        print_status "info" "Initialising control plane on node $node"
-        run_commands_on_node $node "sudo kubeadm init --pod-network-cidr=172.16.0.0/18 --control-plane-endpoint=127.0.0.1:6444 --apiserver-cert-extra-sans=127.0.0.1"
+        print_status "info" "Initialising control plane on node $node with command: $kubeadm_init_command"
+        run_commands_on_node $node "$kubeadm_init_command"
     else
         print_status "info" "Control plane is already initialised on node $node"
     fi
-
-# kubeadm init phase upload-certs --upload-certs
-# kubeadm token create --print-join-command
-# --control-plane --certificate-key
 }
 
+
+##########################################
+# Join node to the control plane
+##########################################
 function kubeadm_join() {
     local node="$1"
 
@@ -467,6 +500,7 @@ function kubeadm_join() {
 
 }
 
+
 ##########################################
 # Install Helm
 ##########################################
@@ -489,24 +523,21 @@ function install_helm() {
 function install_calico() {
     local node="$1"
 
+    local calico_values=$(yq e '.cluster_network.cni.calico.values' "$NODES_FILE")
+    if [ "$calico_values" != "null" ] && [ -n "$calico_values" ]; then
+        print_status "info" "Calico config is set in the manifest"
+        echo "$calico_values"
+    else
+        print_status "info" "Calico config is not set in the manifest"
+    fi
+
     run_commands_on_node $node "sudo helm --kubeconfig /etc/kubernetes/admin.conf --namespace tigera-operator list --no-headers"
     if [ -z "$RETURN_OUTPUT" ]; then
         print_status "info" "Installing Calico on node $node"
 
         run_commands_on_node $node "sudo tee /tmp/calico-values.yaml > /dev/null <<EOF
 ---
-installation:
-  cni:
-    type: Calico
-  calicoNetwork:
-    bgp: Disabled
-    ipPools:
-      - name: default-ipv4-ippool
-        blockSize: 26
-        cidr: 172.16.0.0/18
-        encapsulation: VXLAN
-        natOutgoing: Enabled
-        nodeSelector: all()
+$calico_values
 EOF"
 
         run_commands_on_node $node "sudo helm repo add projectcalico https://docs.tigera.io/calico/charts && sudo helm repo update"
@@ -519,8 +550,6 @@ EOF"
     else
         print_status "info" "Calico is already installed on node $node"
     fi
-
-
 }
 
 

@@ -13,10 +13,37 @@ bastion:
   username: ubuntu
   private_key: ~/.ssh/aws-khandle-bastion-node
 
+cluster_network:
+  apiserver_advertise_address: ""
+  apiserver_cert_extra_sans:
+    - 127.0.0.1
+  control_plane_endpoint: 127.0.0.1:6444
+  pod_network_cidr: 172.16.0.0/18
+  service_dns_domain: ""
+  cni:
+    calico:
+      version: v3.30.3
+      values:
+        installation:
+          cni:
+            type: Calico
+          calicoNetwork:
+            bgp: Disabled
+            ipPools:
+              - name: default-ipv4-ippool
+                blockSize: 26
+                cidr: 172.16.0.0/18
+                encapsulation: VXLAN
+                natOutgoing: Enabled
+                nodeSelector: all()
+        apiServer:
+          enabled: true
+
+
 control_planes:
   - hostname: nd01
-    public_ip: 3.71.203.203
-    private_ip: 10.0.0.59
+    public_ip: 18.193.72.202
+    private_ip: 10.0.0.166
     location: eu-central-1a
     labels:
       environment: production
@@ -26,18 +53,18 @@ control_planes:
       kubelet:
         extra_args:
           - "--node-labels=node-role.kubernetes.io/control-plane=true"
-  - hostname: nd02
-    public_ip: 3.79.184.130
-    private_ip: 10.0.0.214
-    location: eu-central-1a
-    labels:
-      environment: production
-      team: platform
-    kubernetes:
-      version: 1.31.0
-      kubelet:
-        extra_args:
-          - "--node-labels=node-role.kubernetes.io/control-plane=true"
+  # - hostname: nd02
+  #   public_ip: 3.79.184.130
+  #   private_ip: 10.0.0.214
+  #   location: eu-central-1a
+  #   labels:
+  #     environment: production
+  #     team: platform
+  #   kubernetes:
+  #     version: 1.31.0
+  #     kubelet:
+  #       extra_args:
+  #         - "--node-labels=node-role.kubernetes.io/control-plane=true"
   # - hostname: nd03
   #   public_ip: 3.79.115.23
   #   private_ip: 10.0.0.187
