@@ -184,9 +184,12 @@ run_commands_on_node() {
         bastion_message="via bastion $bastion_address"
     fi
 
+    # Create a new structure with both arrays preserved under 'nodes'
+    local all_nodes=$(yq e '.nodes = (.control_planes + .worker_nodes) | with_entries(select(.key == "nodes"))' "$nodes_file")
+
     hostname="$node"
-    public_ip=$(yq e '.control_planes[] | select(.hostname == "'$node'") | .public_ip' "$nodes_file")
-    private_ip=$(yq e '.control_planes[] | select(.hostname == "'$node'") | .private_ip' "$nodes_file")
+    public_ip=$(echo "$all_nodes" | yq e '.nodes[] | select(.hostname == "'$node'") | .public_ip')
+    private_ip=$(echo "$all_nodes" | yq e '.nodes[] | select(.hostname == "'$node'") | .private_ip')
 
     connection_address=$public_ip
     if [ "$ssh_connect_through" = "hostname" ]; then
@@ -234,7 +237,7 @@ function manage_nodes() {
         print_status "info" "Managing all nodes"
     fi
 
-    manage_control_plane
+    manage_control_plane_nodes
     manage_worker_nodes
 }
 
@@ -242,7 +245,7 @@ function manage_nodes() {
 ##########################################
 # Interact with the control plane nodes
 ##########################################
-function manage_control_plane() {
+function manage_control_plane_nodes() {
     if [ "$VERBOSE" = true ]; then
         print_status "info" "Managing control plane nodes only"
     fi
@@ -260,7 +263,7 @@ function manage_control_plane() {
         install_haproxy $hostname
 
         if [ "$hostname" = "$control_plane_main_node" ]; then
-            kubeadm_init $hostname
+            kubeadm_control_plane_init $hostname
             install_helm $hostname
 
             local cni_calico=$(yq e '.cluster_network.cni.calico' "$NODES_FILE")
@@ -269,7 +272,7 @@ function manage_control_plane() {
             fi
 
         else
-            kubeadm_join $hostname
+            kubeadm_control_plane_join $hostname
         fi
 
     done
@@ -284,6 +287,16 @@ function manage_worker_nodes() {
         print_status "info" "Managing worker nodes only"
     fi
 
+    local worker_nodes_count=$(yq e '.worker_nodes | length' "$NODES_FILE")
+    for ((i=0; i<worker_nodes_count; i++)); do
+        hostname=$(yq e ".worker_nodes[$i].hostname" "$NODES_FILE")
+        print_status "info" "Managing worker node $hostname"
+        sysctl_configuration $hostname
+        load_modules $hostname
+        install_runtime $hostname
+        install_haproxy $hostname
+        kubeadm_worker_node_join $hostname
+    done
 }
 
 
@@ -322,7 +335,7 @@ function install_runtime() {
     if [ -z "$RETURN_OUTPUT" ]; then
         print_status "info" "Installing containerd on node $node"
 
-        run_commands_on_node $node "sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gpg containerd libnginx-mod-stream"
+        run_commands_on_node $node "sudo apt-get update && sudo apt-get install -y apt-transport-https ca-certificates curl gpg containerd"
         run_commands_on_node $node "sudo mkdir -p /etc/containerd"
         run_commands_on_node $node "sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null"
         run_commands_on_node $node "sudo sed -ri 's/^(\s*)SystemdCgroup\s*=.*/\1SystemdCgroup = true/' /etc/containerd/config.toml"
@@ -422,6 +435,7 @@ backend control-plane
     server $j_hostname $j_private_ip:6443 check"
     done
 
+    print_status "info" "Configuring haproxy on node $node"
     run_commands_on_node $node "sudo tee /etc/haproxy/haproxy.cfg > /dev/null <<EOF
 $haproxy_config
 EOF"
@@ -433,20 +447,15 @@ EOF"
 ##########################################
 # Initialise control plane
 ##########################################
-function kubeadm_init() {
+function kubeadm_control_plane_init() {
     local node="$1"
 
-    local apiserver_advertise_address=$(yq e '.cluster_network.apiserver_advertise_address' "$NODES_FILE")
     local apiserver_cert_extra_sans=$(yq e '.cluster_network.apiserver_cert_extra_sans | join(",")' "$NODES_FILE")
     local control_plane_endpoint=$(yq e '.cluster_network.control_plane_endpoint' "$NODES_FILE")
     local pod_network_cidr=$(yq e '.cluster_network.pod_network_cidr' "$NODES_FILE")
     local service_dns_domain=$(yq e '.cluster_network.service_dns_domain' "$NODES_FILE")
 
     local kubeadm_init_command="sudo kubeadm init"
-
-    if [ "$apiserver_advertise_address" != "null" ] && [ -n "$apiserver_advertise_address" ]; then
-        kubeadm_init_command+=" --apiserver-advertise-address=$apiserver_advertise_address"
-    fi
 
     if [ "$apiserver_cert_extra_sans" != "null" ] && [ -n "$apiserver_cert_extra_sans" ]; then
         kubeadm_init_command+=" --apiserver-cert-extra-sans=$apiserver_cert_extra_sans"
@@ -468,6 +477,13 @@ function kubeadm_init() {
     if [ "$RETURN_OUTPUT" = "doesnotexist" ]; then
         print_status "info" "Initialising control plane on node $node with command: $kubeadm_init_command"
         run_commands_on_node $node "$kubeadm_init_command"
+
+        print_status "info" "Copying kubeconfig to local directory"
+        # run_commands_on_node $node "while sudo test ! -f /etc/kubernetes/admin.conf; do sleep 1; done"
+        run_commands_on_node $node "sudo mkdir -p /root/.kube && sudo cp /etc/kubernetes/admin.conf /root/.kube/config && sudo chmod 600 /root/.kube/config"
+        run_commands_on_node $node "sudo cat /etc/kubernetes/admin.conf"
+        local kubeconfig_output=$RETURN_OUTPUT
+        echo "$kubeconfig_output" > ./khandle.kubeconfig
     else
         print_status "info" "Control plane is already initialised on node $node"
     fi
@@ -477,7 +493,7 @@ function kubeadm_init() {
 ##########################################
 # Join node to the control plane
 ##########################################
-function kubeadm_join() {
+function kubeadm_control_plane_join() {
     local node="$1"
 
     run_commands_on_node $node "test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
@@ -498,6 +514,27 @@ function kubeadm_join() {
         print_status "info" "Node $node is already joined to the control plane"
     fi
 
+}
+
+
+##########################################
+# Join node to the worker nodes
+##########################################
+function kubeadm_worker_node_join() {
+    local node="$1"
+
+    run_commands_on_node $node "test -f /etc/kubernetes/kubelet.conf && echo 'exists' || echo 'doesnotexist'"
+    if [ "$RETURN_OUTPUT" = "doesnotexist" ]; then
+        print_status "info" "Joining worker node $node to the cluster"
+
+        # Get the token from the control plane main node
+        local control_plane_main_node="$(yq e ".control_planes[0].hostname" "$NODES_FILE")"
+        run_commands_on_node $control_plane_main_node "sudo kubeadm token create --print-join-command"
+        local join_command=$RETURN_OUTPUT
+        run_commands_on_node $node "sudo $join_command"
+    else
+        print_status "info" "Node $node is already joined to the cluster"
+    fi
 }
 
 
@@ -524,16 +561,23 @@ function install_calico() {
     local node="$1"
 
     local calico_values=$(yq e '.cluster_network.cni.calico.values' "$NODES_FILE")
-    if [ "$calico_values" != "null" ] && [ -n "$calico_values" ]; then
-        print_status "info" "Calico config is set in the manifest"
-        echo "$calico_values"
-    else
+    if [ "$calico_values" = "null" ] || [ -z "$calico_values" ]; then
         print_status "info" "Calico config is not set in the manifest"
+        return
+    fi
+
+    local calico_version=$(yq e '.cluster_network.cni.calico.version' "$NODES_FILE")
+    local calico_version_arg=""
+    if [ "$calico_version" != "null" ] && [ -n "$calico_version" ]; then
+        calico_version_arg="--version $calico_version"
+    else
+        print_status "warning" "Calico version is not set in the manifest. Using latest version"
+        calico_version="latest"
     fi
 
     run_commands_on_node $node "sudo helm --kubeconfig /etc/kubernetes/admin.conf --namespace tigera-operator list --no-headers"
     if [ -z "$RETURN_OUTPUT" ]; then
-        print_status "info" "Installing Calico on node $node"
+        print_status "info" "Installing Calico $calico_version version on node $node"
 
         run_commands_on_node $node "sudo tee /tmp/calico-values.yaml > /dev/null <<EOF
 ---
@@ -543,7 +587,7 @@ EOF"
         run_commands_on_node $node "sudo helm repo add projectcalico https://docs.tigera.io/calico/charts && sudo helm repo update"
         run_commands_on_node $node "sudo helm install calico projectcalico/tigera-operator \
             --kubeconfig /etc/kubernetes/admin.conf \
-            --version v3.30.3 \
+            $calico_version_arg \
             --namespace tigera-operator \
             --create-namespace \
             --values /tmp/calico-values.yaml"

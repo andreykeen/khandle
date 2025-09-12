@@ -14,9 +14,9 @@ bastion:
   private_key: ~/.ssh/aws-khandle-bastion-node
 
 cluster_network:
-  apiserver_advertise_address: ""
   apiserver_cert_extra_sans:
     - 127.0.0.1
+    - 18.197.86.134
   control_plane_endpoint: 127.0.0.1:6444
   pod_network_cidr: 172.16.0.0/18
   service_dns_domain: ""
@@ -33,17 +33,17 @@ cluster_network:
               - name: default-ipv4-ippool
                 blockSize: 26
                 cidr: 172.16.0.0/18
-                encapsulation: VXLAN
+                encapsulation: VXLANCrossSubnet
                 natOutgoing: Enabled
                 nodeSelector: all()
         apiServer:
           enabled: true
 
-
 control_planes:
   - hostname: nd01
-    public_ip: 18.193.72.202
-    private_ip: 10.0.0.166
+    public_ip: 18.197.86.134
+    private_ip: 10.0.0.89
+    apiserver_advertise_address: ""
     location: eu-central-1a
     labels:
       environment: production
@@ -53,27 +53,41 @@ control_planes:
       kubelet:
         extra_args:
           - "--node-labels=node-role.kubernetes.io/control-plane=true"
-  # - hostname: nd02
-  #   public_ip: 3.79.184.130
-  #   private_ip: 10.0.0.214
-  #   location: eu-central-1a
-  #   labels:
-  #     environment: production
-  #     team: platform
-  #   kubernetes:
-  #     version: 1.31.0
-  #     kubelet:
-  #       extra_args:
-  #         - "--node-labels=node-role.kubernetes.io/control-plane=true"
-  # - hostname: nd03
-  #   public_ip: 3.79.115.23
-  #   private_ip: 10.0.0.187
-  #   location: eu-central-1a
-  #   labels:
-  #     environment: production
-  #     team: platform
-  #   kubernetes:
-  #     version: 1.31.0
-  #     kubelet:
-  #       extra_args:
-  #         - "--node-labels=node-role.kubernetes.io/control-plane=true"
+  - hostname: nd02
+    public_ip: 3.77.233.182
+    private_ip: 10.0.0.7
+    location: eu-central-1a
+    labels:
+      environment: production
+      team: platform
+    kubernetes:
+      version: 1.31.0
+      kubelet:
+        extra_args:
+          - "--node-labels=node-role.kubernetes.io/control-plane=true"
+  - hostname: nd03
+    public_ip: 63.177.254.35
+    private_ip: 10.0.0.96
+    location: eu-central-1a
+    labels:
+      environment: production
+      team: platform
+    kubernetes:
+      version: 1.31.0
+      kubelet:
+        extra_args:
+          - "--node-labels=node-role.kubernetes.io/control-plane=true"
+
+worker_nodes:
+  - hostname: nd04
+    public_ip: 3.79.189.161
+    private_ip: 10.0.0.33
+    location: eu-central-1a
+    labels:
+      environment: production
+      team: platform
+    kubernetes:
+      version: 1.31.0
+      kubelet:
+        extra_args:
+          - "--node-labels=node-role.kubernetes.io/worker=true"
