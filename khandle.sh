@@ -8,10 +8,11 @@ BLUE='\033[0;34m'
 LIGHT_BLUE='\033[1;34m'
 NC='\033[0m' # No Colour
 
-
 # Global variables
 COMMAND=""
 NODES_FILE=""
+ALL_NODES=""
+CONTROL_PLANE_MAIN_NODE=""
 VERBOSE=false
 RETURN_OUTPUT=""
 
@@ -184,12 +185,9 @@ run_commands_on_node() {
         bastion_message="via bastion $bastion_address"
     fi
 
-    # Create a new structure with both arrays preserved under 'nodes'
-    local all_nodes=$(yq e '.nodes = (.control_planes + .worker_nodes) | with_entries(select(.key == "nodes"))' "$nodes_file")
-
     hostname="$node"
-    public_ip=$(echo "$all_nodes" | yq e '.nodes[] | select(.hostname == "'$node'") | .public_ip')
-    private_ip=$(echo "$all_nodes" | yq e '.nodes[] | select(.hostname == "'$node'") | .private_ip')
+    public_ip=$(echo "$ALL_NODES" | yq e '.nodes[] | select(.hostname == "'$node'") | .public_ip')
+    private_ip=$(echo "$ALL_NODES" | yq e '.nodes[] | select(.hostname == "'$node'") | .private_ip')
 
     connection_address=$public_ip
     if [ "$ssh_connect_through" = "hostname" ]; then
@@ -250,31 +248,31 @@ function manage_control_plane_nodes() {
         print_status "info" "Managing control plane nodes only"
     fi
 
-    # Only use the first control plane node for the initialisation
-    local control_plane_main_node="$(yq e ".control_planes[0].hostname" "$NODES_FILE")"
-
     local control_plane_count=$(yq e '.control_planes | length' "$NODES_FILE")
     for ((i=0; i<control_plane_count; i++)); do
         hostname=$(yq e ".control_planes[$i].hostname" "$NODES_FILE")
 
-        sysctl_configuration $hostname
-        load_modules $hostname
-        install_runtime $hostname
-        install_haproxy $hostname
+        # sysctl_configuration $hostname
+        # load_modules $hostname
+        # install_runtime $hostname
+        # install_haproxy $hostname
 
-        if [ "$hostname" = "$control_plane_main_node" ]; then
-            kubeadm_control_plane_init $hostname
-            install_helm $hostname
+        # # Only use the first control plane node for the initialisation
+        # if [ "$hostname" = "$CONTROL_PLANE_MAIN_NODE" ]; then
+        #     kubeadm_control_plane_init $hostname
+        #     install_helm $hostname
 
-            local cni_calico=$(yq e '.cluster_network.cni.calico' "$NODES_FILE")
-            if [ "$cni_calico" != "null" ] && [ -n "$cni_calico" ]; then
-                install_calico $hostname
-            fi
+        #     local cni_calico=$(yq e '.cluster_network.cni.calico' "$NODES_FILE")
+        #     if [ "$cni_calico" != "null" ] && [ -n "$cni_calico" ]; then
+        #         install_calico $hostname
+        #     fi
 
-        else
-            kubeadm_control_plane_join $hostname
-        fi
+        # else
+        #     kubeadm_control_plane_join $hostname
+        # fi
 
+        # kubelet_patch_config $hostname
+        kubectl_label_node $hostname
     done
 }
 
@@ -291,11 +289,15 @@ function manage_worker_nodes() {
     for ((i=0; i<worker_nodes_count; i++)); do
         hostname=$(yq e ".worker_nodes[$i].hostname" "$NODES_FILE")
         print_status "info" "Managing worker node $hostname"
-        sysctl_configuration $hostname
-        load_modules $hostname
-        install_runtime $hostname
-        install_haproxy $hostname
-        kubeadm_worker_node_join $hostname
+
+        # sysctl_configuration $hostname
+        # load_modules $hostname
+        # install_runtime $hostname
+        # install_haproxy $hostname
+        # kubeadm_worker_node_join $hostname
+        # kubelet_patch_config $hostname
+
+        kubectl_label_node $hostname
     done
 }
 
@@ -345,6 +347,8 @@ function install_runtime() {
     else
         print_status "info" "containerd is already installed on node $node"
     fi
+
+    run_commands_on_node $node "sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq"
 
     run_commands_on_node $node "sudo test -f /etc/crictl.yaml && echo 'exists' || echo 'doesnotexist'"
     if [ "$RETURN_OUTPUT" = "doesnotexist" ]; then
@@ -500,11 +504,10 @@ function kubeadm_control_plane_join() {
     if [ "$RETURN_OUTPUT" = "doesnotexist" ]; then
         print_status "info" "Joining node $node to the control plane"
 
-        # Get the token from the control plane main node
-        local control_plane_main_node="$(yq e ".control_planes[0].hostname" "$NODES_FILE")"
-        run_commands_on_node $control_plane_main_node "sudo kubeadm init phase upload-certs --upload-certs | grep -v 'upload-certs'"
+
+        run_commands_on_node $CONTROL_PLANE_MAIN_NODE "sudo kubeadm init phase upload-certs --upload-certs | grep -v 'upload-certs'"
         local certificate_key=$RETURN_OUTPUT
-        run_commands_on_node $control_plane_main_node "sudo kubeadm token create --print-join-command"
+        run_commands_on_node $CONTROL_PLANE_MAIN_NODE "sudo kubeadm token create --print-join-command"
         local join_command=$RETURN_OUTPUT
         join_command="$join_command --control-plane --certificate-key $certificate_key"
 
@@ -528,13 +531,63 @@ function kubeadm_worker_node_join() {
         print_status "info" "Joining worker node $node to the cluster"
 
         # Get the token from the control plane main node
-        local control_plane_main_node="$(yq e ".control_planes[0].hostname" "$NODES_FILE")"
-        run_commands_on_node $control_plane_main_node "sudo kubeadm token create --print-join-command"
+        run_commands_on_node $CONTROL_PLANE_MAIN_NODE "sudo kubeadm token create --print-join-command"
         local join_command=$RETURN_OUTPUT
         run_commands_on_node $node "sudo $join_command"
     else
         print_status "info" "Node $node is already joined to the cluster"
     fi
+}
+
+
+##########################################
+# Configure kubelet
+##########################################
+function kubelet_patch_config() {
+    local node="$1"
+
+    local kubelet_config=$(echo "$ALL_NODES" | yq e '.nodes[] | select(.hostname == "'$node'") | .kubernetes.kubelet.config')
+    if [ "$kubelet_config" != "null" ] && [ -n "$kubelet_config" ]; then
+        print_status "info" "Specifying Kubelet config on node $node"
+
+        # Create the patch file
+        run_commands_on_node $node "sudo tee /var/lib/kubelet/config-patch.yaml > /dev/null <<EOF
+$kubelet_config
+EOF"
+
+        # Backup the original config
+        run_commands_on_node $node "sudo cp /var/lib/kubelet/config.yaml /var/lib/kubelet/config-original.yaml"
+
+        # Delete fields that exist in the patch file
+        run_commands_on_node $node "sudo yq eval-all 'select(fileIndex == 0) as \$orig | select(fileIndex == 1) as \$patch | (\$orig | delpaths([[\$patch | keys[]]])) * \$patch' /var/lib/kubelet/config-original.yaml /var/lib/kubelet/config-patch.yaml | sudo tee /var/lib/kubelet/config.yaml > /dev/null"
+
+        # Restart kubelet to apply the new configuration
+        run_commands_on_node $node "sudo systemctl restart kubelet"
+    fi
+}
+
+
+##########################################
+# Label node
+##########################################
+function kubectl_label_node() {
+    local node="$1"
+
+
+    local node_labels=$(echo "$ALL_NODES" | yq e '.nodes[] | select(.hostname == "'$node'") | .kubernetes.labels')
+    if [ "$node_labels" != "null" ] && [ -n "$node_labels" ]; then
+        print_status "info" "Labeling node $node"
+        # echo "$node_labels"
+
+
+        local labels_string=$(echo "$node_labels" | tr -s ':' '=' | tr -d ' ' | tr -s '\n' ' ')
+        # echo "$labels_string"
+
+        run_commands_on_node $CONTROL_PLANE_MAIN_NODE "sudo kubectl --kubeconfig /etc/kubernetes/admin.conf label node $node $labels_string"
+    fi
+
+
+
 }
 
 
@@ -615,6 +668,18 @@ main() {
     parse_arguments "$@"
     validate_arguments
     check_tools
+
+    # Create a new structure with both arrays preserved under 'nodes'
+    ALL_NODES=$(yq e '.nodes = (.control_planes + .worker_nodes) | with_entries(select(.key == "nodes"))' "$NODES_FILE")
+
+    # Get the main control plane node
+    CONTROL_PLANE_MAIN_NODE=$(yq e ".control_planes[0].hostname" "$NODES_FILE")
+    if [ "$CONTROL_PLANE_MAIN_NODE" = "null" ] || [ -z "$CONTROL_PLANE_MAIN_NODE" ]; then
+        print_status "error" "There should be at least one control plane node in the manifest"
+        exit 1
+    fi
+    print_status "info" "Main control plane node: $CONTROL_PLANE_MAIN_NODE"
+
 
     case $COMMAND in
         apply)

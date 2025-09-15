@@ -16,7 +16,7 @@ bastion:
 cluster_network:
   apiserver_cert_extra_sans:
     - 127.0.0.1
-    - 18.197.86.134
+    - 18.185.49.121
   control_plane_endpoint: 127.0.0.1:6444
   pod_network_cidr: 172.16.0.0/18
   service_dns_domain: ""
@@ -41,53 +41,55 @@ cluster_network:
 
 control_planes:
   - hostname: nd01
-    public_ip: 18.197.86.134
-    private_ip: 10.0.0.89
+    public_ip: 18.185.49.121
+    private_ip: 10.0.0.48
     apiserver_advertise_address: ""
     location: eu-central-1a
-    labels:
-      environment: production
-      team: platform
     kubernetes:
       version: 1.31.0
+      labels:
+        node.kubernetes.io/instance-type: "t3a.xlarge"
       kubelet:
+        config:
+          systemReserved:
+            cpu: 1000m
+            memory: 1Gi
         extra_args:
           - "--node-labels=node-role.kubernetes.io/control-plane=true"
-  - hostname: nd02
-    public_ip: 3.77.233.182
-    private_ip: 10.0.0.7
-    location: eu-central-1a
-    labels:
-      environment: production
-      team: platform
-    kubernetes:
-      version: 1.31.0
-      kubelet:
-        extra_args:
-          - "--node-labels=node-role.kubernetes.io/control-plane=true"
-  - hostname: nd03
-    public_ip: 63.177.254.35
-    private_ip: 10.0.0.96
-    location: eu-central-1a
-    labels:
-      environment: production
-      team: platform
-    kubernetes:
-      version: 1.31.0
-      kubelet:
-        extra_args:
-          - "--node-labels=node-role.kubernetes.io/control-plane=true"
+#   - hostname: nd02
+#     public_ip: 3.77.233.182
+#     private_ip: 10.0.0.7
+#     location: eu-central-1a
+#     kubernetes:
+#       version: 1.31.0
+#       kubelet:
+#         extra_args:
+#           - "--node-labels=node-role.kubernetes.io/control-plane=true"
+#   - hostname: nd03
+#     public_ip: 63.177.254.35
+#     private_ip: 10.0.0.96
+#     location: eu-central-1a
+#     kubernetes:
+#       version: 1.31.0
+#       kubelet:
+#         extra_args:
+#           - "--node-labels=node-role.kubernetes.io/control-plane=true"
 
 worker_nodes:
   - hostname: nd04
-    public_ip: 3.79.189.161
-    private_ip: 10.0.0.33
+    public_ip: 3.121.219.105
+    private_ip: 10.0.0.88
     location: eu-central-1a
-    labels:
-      environment: production
-      team: platform
     kubernetes:
       version: 1.31.0
+      labels:
+        node-role.kubernetes.io/worker: ""
+        node.kubernetes.io/instance-type: "t3a.xlarge"
       kubelet:
+        config:
+          maxPods: 220
+          systemReserved:
+            cpu: 2000m
+            memory: 2Gi
         extra_args:
           - "--node-labels=node-role.kubernetes.io/worker=true"
