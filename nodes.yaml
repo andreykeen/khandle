@@ -16,7 +16,7 @@ bastion:
 cluster_network:
   apiserver_cert_extra_sans:
     - 127.0.0.1
-    - 18.185.49.121
+    - 18.196.81.53
   control_plane_endpoint: 127.0.0.1:6444
   pod_network_cidr: 172.16.0.0/18
   service_dns_domain: ""
@@ -41,8 +41,8 @@ cluster_network:
 
 control_planes:
   - hostname: nd01
-    public_ip: 18.185.49.121
-    private_ip: 10.0.0.48
+    public_ip: 18.196.81.53
+    private_ip: 10.0.0.181
     apiserver_advertise_address: ""
     location: eu-central-1a
     kubernetes:
@@ -77,8 +77,8 @@ control_planes:
 
 worker_nodes:
   - hostname: nd04
-    public_ip: 3.121.219.105
-    private_ip: 10.0.0.88
+    public_ip: 3.79.109.31
+    private_ip: 10.0.0.139
     location: eu-central-1a
     kubernetes:
       version: 1.31.0
