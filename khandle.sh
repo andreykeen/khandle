@@ -17,12 +17,11 @@ VERBOSE=false
 RETURN_OUTPUT=""
 
 
+source lib/nodes.sh
 source lib/cni.sh
-source lib/haproxy.sh
 source lib/kubeadm.sh
 source lib/kubectl.sh
 source lib/kubelet.sh
-source lib/nodes.sh
 source lib/packages.sh
 source lib/ssh.sh
 source lib/sysctl.sh
@@ -59,9 +58,9 @@ function show_usage() {
 Usage: $0 [COMMAND] [OPTIONS]
 
 Commands:
-    apply    Apply the manifest to the cluster
-    get      Get the status of the cluster
-    help     Show this help message
+    install    Install the cluster
+    update     Update the cluster
+    help       Show this help message
 
 Options:
     -m, --manifest <nodes.yaml>  Path to the nodes.yaml manifest file
@@ -69,8 +68,8 @@ Options:
     -d, --dry-run                Show what would be executed without running commands
 
 Examples:
-    $0 apply -m nodes.yaml
-    $0 get -m nodes.yaml
+    $0 install -m nodes.yaml
+    $0 update -m nodes.yaml
     $0 help
 
 EOF
@@ -88,12 +87,12 @@ function parse_arguments() {
 
     while [[ $# -gt 0 ]]; do
         case $1 in
-            apply)
-                COMMAND="apply"
+            install)
+                COMMAND="install"
                 shift
                 ;;
-            get)
-                COMMAND="get"
+            update)
+                COMMAND="update"
                 shift
                 ;;
             help)
@@ -118,7 +117,7 @@ function parse_arguments() {
 # Validate arguments
 ##########################################
 function validate_arguments() {
-    if [ "$COMMAND" == "apply" ]; then
+    if [ "$COMMAND" == "install" ]; then
         if [ -z "$NODES_FILE" ]; then
             print_status "error" "Nodes file is required"
             show_usage
@@ -164,16 +163,14 @@ function main() {
         print_status "error" "There should be at least one control plane node in the manifest"
         exit 1
     fi
-    print_status "info" "Main control plane node: $CONTROL_PLANE_MAIN_NODE"
-
 
     case $COMMAND in
-        apply)
-            print_status "info" "Applying the manifest to the cluster"
+        install)
+            print_status "info" "Installing the cluster"
             nodes_manage
             ;;
-        get)
-            print_status "info" "Getting the status of the cluster"
+        update)
+            print_status "info" "Updating the cluster"
             ;;
         help)
             show_usage

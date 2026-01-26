@@ -7,7 +7,7 @@ function nodes_manage() {
     fi
 
     nodes_control_plane_manage
-    nodes_worker_manage
+    # nodes_worker_manage
 }
 
 
@@ -25,9 +25,16 @@ function nodes_control_plane_manage() {
 
         sysctl_configuration $hostname
         load_modules $hostname
-        packages_install $hostname
+        packages_system_install $hostname
         packages_runtime_install $hostname
-        haproxy_configure $hostname
+        packages_kubernetes_install $hostname
+        packages_haproxy_install $hostname
+
+
+        ###
+        ### Continue from here...
+        ###
+
 
         # Only use the first control plane node for the initialisation
         if [ "$hostname" = "$CONTROL_PLANE_MAIN_NODE" ]; then
