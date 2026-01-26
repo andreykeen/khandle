@@ -28,8 +28,10 @@ resource "aws_security_group" "instance_security_group" {
     cidr_blocks = ["0.0.0.0/0"]
   }
 
-  tags = {
-    Name    = "khandle"
-    managed = "terraform"
-  }
+  tags = merge(
+    {
+      Name = "${var.project_name}"
+    },
+    var.common_tags
+  )
 }

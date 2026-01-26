@@ -4,10 +4,12 @@ resource "aws_vpc" "vpc" {
   cidr_block           = "10.0.0.0/16"
   enable_dns_hostnames = true
   enable_dns_support   = true
-  tags = {
-    Name    = "khandle"
-    managed = "terraform"
-  }
+  tags = merge(
+    {
+      Name = "k8s-multi-cluster"
+    },
+    var.common_tags
+  )
 }
 
 resource "aws_subnet" "subnet" {
@@ -15,18 +17,22 @@ resource "aws_subnet" "subnet" {
   cidr_block        = cidrsubnet(aws_vpc.vpc.cidr_block, 8, count.index)
   vpc_id            = aws_vpc.vpc.id
   availability_zone = data.aws_availability_zones.available.names[count.index]
-  tags = {
-    Name    = "khandle"
-    managed = "terraform"
-  }
+  tags = merge(
+    {
+      Name = "k8s-multi-cluster-${data.aws_availability_zones.available.names[count.index]}"
+    },
+    var.common_tags
+  )
 }
 
 resource "aws_internet_gateway" "internet_gateway" {
   vpc_id = aws_vpc.vpc.id
-  tags = {
-    Name    = "khandle"
-    managed = "terraform"
-  }
+  tags = merge(
+    {
+      Name = "k8s-multi-cluster"
+    },
+    var.common_tags
+  )
 }
 
 resource "aws_route_table" "public" {
@@ -36,10 +42,12 @@ resource "aws_route_table" "public" {
     gateway_id = aws_internet_gateway.internet_gateway.id
   }
   depends_on = [aws_internet_gateway.internet_gateway]
-  tags = {
-    Name    = "khandle"
-    managed = "terraform"
-  }
+  tags = merge(
+    {
+      Name = "k8s-multi-cluster"
+    },
+    var.common_tags
+  )
 }
 
 resource "aws_route_table_association" "vpc_public_assoc" {

@@ -32,11 +32,16 @@ function nodes_control_plane_manage() {
         # Only use the first control plane node for the initialisation
         if [ "$hostname" = "$CONTROL_PLANE_MAIN_NODE" ]; then
             kubeadm_control_plane_init $hostname
-            packages_helm_install $hostname
-            cni_manage $hostname
+            # packages_helm_install $hostname
+            # cni_manage $hostname
         else
             kubeadm_control_plane_join $hostname
         fi
+
+        # if [ "$hostname" = "fsn1-nd02.cxense.com" ]; then
+        #     print_status "info" "Skipping control plane join for node $hostname"
+        #     return 0
+        # fi
 
         kubelet_patch_config $hostname
         kubectl_label_node $hostname
@@ -63,8 +68,8 @@ function nodes_worker_manage() {
         packages_runtime_install $hostname
         haproxy_configure $hostname
         kubeadm_worker_node_join $hostname
-        kubelet_patch_config $hostname
 
+        kubelet_patch_config $hostname
         kubectl_label_node $hostname
     done
 }

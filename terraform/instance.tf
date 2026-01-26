@@ -1,21 +1,23 @@
 
 resource "aws_key_pair" "key_pair" {
-  key_name   = "khandle-cluster-nodes"
-  public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIPbIVEJOAcNCUTZXwK7GsN9HoPvLEUBFjm19zaLj7Tgh AWS khandle cluster nodes"
-  tags = {
-    Name    = "khandle-cluster-nodes"
-    managed = "terraform"
-  }
+  key_name   = "${var.project_name}-nodes"
+  public_key = file("~/.ssh/piano-nodebot-new.pub")
+  tags = merge(
+    {
+      Name = "${var.project_name}"
+    },
+    var.common_tags
+  )
 }
 
-resource "aws_key_pair" "bastion_key_pair" {
-  key_name   = "khandle-cluster-bastion"
-  public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJGcwcFh8uDdVJRNXRgJJqSF+hQVtbJvofzDSuOh3sLf AWS khandle bastion node"
-  tags = {
-    Name    = "khandle-bastion"
-    managed = "terraform"
-  }
-}
+# resource "aws_key_pair" "bastion_key_pair" {
+#   key_name   = "khandle-cluster-bastion"
+#   public_key = "ssh-ed25519 AAAAC3NzaC1lZDI1NTE5AAAAIJGcwcFh8uDdVJRNXRgJJqSF+hQVtbJvofzDSuOh3sLf AWS khandle bastion node"
+#   tags = {
+#     Name    = "khandle-bastion"
+#     managed = "terraform"
+#   }
+# }
 
 data "aws_ami" "ubuntu" {
   most_recent = true
@@ -31,8 +33,7 @@ data "aws_ami" "ubuntu" {
 }
 
 data "cloudinit_config" "instance_config" {
-  for_each = { for node in var.control_plane_nodes : node.name => node }
-
+  for_each      = { for node in var.control_plane_nodes : node.name => node }
   gzip          = true
   base64_encode = true
   part {
@@ -50,41 +51,43 @@ resource "aws_instance" "control_plane_node" {
   instance_type               = each.value.server_type
   key_name                    = aws_key_pair.key_pair.key_name
   subnet_id                   = aws_subnet.subnet[0].id
-  associate_public_ip_address = true
   vpc_security_group_ids      = [aws_security_group.instance_security_group.id]
   user_data                   = data.cloudinit_config.instance_config[each.key].rendered
+  associate_public_ip_address = true
 
   root_block_device {
     volume_size = 15
     volume_type = "gp3"
     encrypted   = true
-    tags = {
-      Name = "${each.key}-root-volume"
-    }
+    tags = merge(
+      {
+        Name = "${var.project_name}-${each.key}-root-volume"
+      },
+      var.common_tags
+    )
   }
 
-  tags = {
-    Name         = "${each.key}"
-    hostname     = "${each.key}"
-  }
+  tags = merge(
+    {
+      Name = "${var.project_name}-${each.key}"
+    },
+    var.common_tags
+  )
 }
 
-# resource "aws_instance" "bastion" {
-#   ami                         = data.aws_ami.ubuntu.id
-#   instance_type               = "t3.micro"
-#   key_name                    = aws_key_pair.bastion_key_pair.key_name
-#   subnet_id                   = aws_subnet.subnet[0].id
-#   associate_public_ip_address = true
-#   vpc_security_group_ids      = [aws_security_group.instance_security_group.id]
-#   user_data                   = data.cloudinit_config.instance_config.rendered
-#   tags = {
-#     Name         = "bastion"
-#     hostname     = "bastion"
-#   }
-# }
-
-
-
+# # resource "aws_instance" "bastion" {
+# #   ami                         = data.aws_ami.ubuntu.id
+# #   instance_type               = "t3.micro"
+# #   key_name                    = aws_key_pair.bastion_key_pair.key_name
+# #   subnet_id                   = aws_subnet.subnet[0].id
+# #   associate_public_ip_address = true
+# #   vpc_security_group_ids      = [aws_security_group.instance_security_group.id]
+# #   user_data                   = data.cloudinit_config.instance_config.rendered
+# #   tags = {
+# #     Name         = "bastion"
+# #     hostname     = "bastion"
+# #   }
+# # }
 
 
 # ##### Elastic IP needs for initialisation of the instance

@@ -28,6 +28,7 @@ output "control_plane_nodes" {
     for k, v in aws_instance.control_plane_node : k => {
       public_ip  = v.public_ip
       private_ip = v.private_ip
+      ssh_command = "ssh -o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o LogLevel=ERROR -l ubuntu ${v.public_ip}"
     }
   }
 }

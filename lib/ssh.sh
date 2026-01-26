@@ -63,11 +63,11 @@ run_commands_on_node() {
         bastion_message="via bastion $bastion_address"
     fi
 
-    hostname="$node"
-    public_ip=$(echo "$ALL_NODES" | yq e '.nodes[] | select(.hostname == "'$node'") | .public_ip')
-    private_ip=$(echo "$ALL_NODES" | yq e '.nodes[] | select(.hostname == "'$node'") | .private_ip')
+    local hostname="$node"
+    local public_ip=$(echo "$ALL_NODES" | yq e '.nodes[] | select(.hostname == "'$node'") | .public_ip')
+    local private_ip=$(echo "$ALL_NODES" | yq e '.nodes[] | select(.hostname == "'$node'") | .private_ip')
 
-    connection_address=$public_ip
+    local connection_address=$public_ip
     if [ "$ssh_connect_through" = "hostname" ]; then
         connection_address=$hostname
     elif [ "$ssh_connect_through" = "private_ip" ]; then

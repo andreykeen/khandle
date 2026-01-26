@@ -3,14 +3,14 @@ control_plane_nodes = [
     name         = "nd01"
     server_type  = "t3a.xlarge"
   },
-  # {
-  #   name         = "nd02"
-  #   server_type  = "t3a.xlarge"
-  # },
-  # {
-  #   name         = "nd03"
-  #   server_type  = "t3a.xlarge"
-  # },
+  {
+    name         = "nd02"
+    server_type  = "t3a.xlarge"
+  },
+  {
+    name         = "nd03"
+    server_type  = "t3a.xlarge"
+  },
   {
     name         = "nd04"
     server_type  = "t3a.xlarge"

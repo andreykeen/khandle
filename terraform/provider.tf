@@ -8,6 +8,6 @@ terraform {
 }
 
 provider "aws" {
-  profile = "personal"
+  profile = "piano"
   region  = "eu-central-1"
 }
