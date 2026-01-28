@@ -23,35 +23,27 @@ function nodes_control_plane_manage() {
     for ((i=0; i<control_plane_count; i++)); do
         hostname=$(yq e ".control_planes[$i].hostname" "$NODES_FILE")
 
-        sysctl_configuration $hostname
-        load_modules $hostname
-        packages_system_install $hostname
-        packages_runtime_install $hostname
-        packages_kubernetes_install $hostname
-        packages_haproxy_install $hostname
+        # sysctl_configuration $hostname
+        # load_modules $hostname
+        # packages_system_install $hostname
+        # packages_runtime_install $hostname
+        # packages_kubernetes_install $hostname
+        # packages_haproxy_install $hostname
 
-
-        ###
-        ### Continue from here...
-        ###
-
-
-        # Only use the first control plane node for the initialisation
-        if [ "$hostname" = "$CONTROL_PLANE_MAIN_NODE" ]; then
-            kubeadm_control_plane_init $hostname
-            # packages_helm_install $hostname
-            # cni_manage $hostname
-        else
-            kubeadm_control_plane_join $hostname
-        fi
-
-        # if [ "$hostname" = "fsn1-nd02.cxense.com" ]; then
-        #     print_status "info" "Skipping control plane join for node $hostname"
-        #     return 0
+        # # Only use the first control plane node for the initialisation
+        # if [ "$hostname" = "$CONTROL_PLANE_MAIN_NODE" ]; then
+        #     kubernetes_kubeadm_control_plane_init $hostname
+        # else
+        #     kubernetes_kubeadm_control_plane_join $hostname
         # fi
 
-        kubelet_patch_config $hostname
-        kubectl_label_node $hostname
+        # # if [ "$hostname" = "fsn1-nd02.cxense.com" ]; then
+        # #     print_status "info" "Skipping control plane join for node $hostname"
+        # #     return 0
+        # # fi
+
+        kubernetes_kubelet_patch_config $hostname
+        # kubectl_label_node $hostname
     done
 }
 
@@ -74,9 +66,9 @@ function nodes_worker_manage() {
         packages_install $hostname
         packages_runtime_install $hostname
         haproxy_configure $hostname
-        kubeadm_worker_node_join $hostname
+        kubernetes_kubeadm_worker_node_join $hostname
 
-        kubelet_patch_config $hostname
+        kubernetes_kubelet_patch_config $hostname
         kubectl_label_node $hostname
     done
 }

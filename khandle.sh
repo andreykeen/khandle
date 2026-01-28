@@ -18,13 +18,11 @@ RETURN_OUTPUT=""
 
 
 source lib/nodes.sh
-source lib/cni.sh
-source lib/kubeadm.sh
-source lib/kubectl.sh
-source lib/kubelet.sh
-source lib/packages.sh
 source lib/ssh.sh
 source lib/sysctl.sh
+source lib/packages.sh
+source lib/kubernetes.sh
+source lib/cni.sh
 
 
 ##########################################
