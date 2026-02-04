@@ -1,21 +1,25 @@
 run_commands_on_node() {
     local node="$1"
     local cmd="$2"
-    local nodes_file="$NODES_FILE"
-
 
     ####################################
     ##### Configure SSH connection #####
 
-    local ssh_port=$(yq e ".global.ssh_connection.port" "$nodes_file")
-    local ssh_username=$(yq e ".global.ssh_connection.username" "$nodes_file")
-    local ssh_private_key=$(yq e ".global.ssh_connection.private_key" "$nodes_file")
-    local ssh_connect_through=$(yq e '.global.ssh_connection.connect_through' "$nodes_file")
-    local bastion_enabled=$(yq e '.global.ssh_connection.use_bastion' "$nodes_file")
+    local ssh_port=$(manifest_read_yaml ".global.ssh_connection.port")
+    local ssh_username=$(manifest_read_yaml ".global.ssh_connection.username")
+    local ssh_private_key=$(manifest_read_yaml ".global.ssh_connection.private_key")
+    local ssh_connect_through=$(manifest_read_yaml ".global.ssh_connection.connect_through")
+    local bastion_enabled=$(manifest_read_yaml ".global.ssh_connection.use_bastion")
+
+    local hostname=$(yq ".hostname" <<< "$node")
+    local public_ip=$(yq ".public_ip" <<< "$node")
+    local private_ip=$(yq ".private_ip" <<< "$node")
 
     local ssh_port_arg=""
     local ssh_username_arg=""
     local ssh_private_key_arg=""
+    local ssh_args="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o LogLevel=ERROR"
+
 
     if [ -n "$ssh_port" ] && [ "$ssh_port" != "null" ]; then
         ssh_port_arg="-p $ssh_port"
@@ -39,15 +43,21 @@ run_commands_on_node() {
     local bastion_message=""
 
     if [ "$bastion_enabled" = "true" ]; then
-        local bastion_address=$(yq e '.bastion.address' "$nodes_file")
-        local bastion_port=$(yq e '.bastion.port' "$nodes_file")
-        local bastion_username=$(yq e '.bastion.username' "$nodes_file")
-        local bastion_private_key=$(yq e '.bastion.private_key' "$nodes_file")
+        local bastion_address=$(manifest_read_yaml ".global.ssh_connection.bastion.address")
+        local bastion_port=$(manifest_read_yaml ".global.ssh_connection.bastion.port")
+        local bastion_username=$(manifest_read_yaml ".global.ssh_connection.bastion.username")
+        local bastion_private_key=$(manifest_read_yaml ".global.ssh_connection.bastion.private_key")
 
-        if [ -z "$bastion_address" ]; then
+        echo "bastion_address: $bastion_address"
+        echo "bastion_port: $bastion_port"
+        echo "bastion_username: $bastion_username"
+        echo "bastion_private_key: $bastion_private_key"
+
+        if [ -z "$bastion_address" ] || [ "$bastion_address" = "null" ]; then
             print_status "error" "Bastion address is required"
             exit 1
         fi
+
         if [ -n "$bastion_port" ] && [ "$bastion_port" != "null" ]; then
             bastion_port_arg="-p $bastion_port"
         fi
@@ -63,21 +73,12 @@ run_commands_on_node() {
         bastion_message="via bastion $bastion_address"
     fi
 
-    local hostname="$node"
-    local public_ip=$(echo "$ALL_NODES" | yq e '.nodes[] | select(.hostname == "'$node'") | .public_ip')
-    local private_ip=$(echo "$ALL_NODES" | yq e '.nodes[] | select(.hostname == "'$node'") | .private_ip')
 
     local connection_address=$public_ip
     if [ "$ssh_connect_through" = "hostname" ]; then
         connection_address=$hostname
     elif [ "$ssh_connect_through" = "private_ip" ]; then
         connection_address=$private_ip
-    fi
-
-    local ssh_args="-o UserKnownHostsFile=/dev/null -o StrictHostKeyChecking=no -o GlobalKnownHostsFile=/dev/null -o LogLevel=ERROR"
-
-    if [ "$VERBOSE" = true ]; then
-        print_status "info" "Running '$cmd' on node $hostname ($connection_address) $bastion_message..."
     fi
 
     local ssh_exit_code
@@ -92,8 +93,8 @@ run_commands_on_node() {
     fi
 
     if [ $ssh_exit_code -ne 0 ]; then
-        print_status "error" "Failed to run '$cmd' on node $hostname ($connection_address) $bastion_message"
-        print_status "error" "SSH output: $output"
+        print_status "error" "$hostname: Failed to run '$cmd' ($connection_address) $bastion_message"
+        print_status "error" "$hostname: SSH output: $output"
         exit 1
     fi
     if [ "$VERBOSE" = true ]; then

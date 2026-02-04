@@ -1,74 +1,66 @@
 ##########################################
-# Interact with the nodes
+# Install the cluster
 ##########################################
-function nodes_manage() {
-    if [ "$VERBOSE" = true ]; then
-        print_status "info" "Managing all nodes"
-    fi
+function nodes_install_cluster() {
 
-    nodes_control_plane_manage
-    # nodes_worker_manage
+    local control_plane_nodes=$(manifest_read_yaml "[.nodes[] | select(.control_plane == true)]")
+    local worker_nodes=$(manifest_read_yaml "[.nodes[] | select(.control_plane == false)]")
+
+    nodes_install_control_plane "$control_plane_nodes"
+    nodes_install_worker "$worker_nodes"
 }
 
 
 ##########################################
-# Interact with the control plane nodes
+# Install the control plane nodes
 ##########################################
-function nodes_control_plane_manage() {
-    if [ "$VERBOSE" = true ]; then
-        print_status "info" "Managing control plane nodes only"
-    fi
+function nodes_install_control_plane() {
+    local nodes="$1"
 
-    local control_plane_count=$(yq e '.control_planes | length' "$NODES_FILE")
-    for ((i=0; i<control_plane_count; i++)); do
-        hostname=$(yq e ".control_planes[$i].hostname" "$NODES_FILE")
+    local nodes_count=$(echo "$nodes" | yq length)
+    local i
+    for ((i=0; i<nodes_count; i++)); do
+        local node=$(yq ".[$i]" <<< "$nodes")
 
-        # sysctl_configuration $hostname
-        # load_modules $hostname
-        # packages_system_install $hostname
-        # packages_runtime_install $hostname
-        # packages_kubernetes_install $hostname
-        # packages_haproxy_install $hostname
+        sysctl_configuration "$node"
+        load_modules "$node"
+        packages_system_install "$node"
+        packages_runtime_install "$node"
+        packages_kubernetes_install "$node"
+        packages_haproxy_install "$node"
 
-        # # Only use the first control plane node for the initialisation
-        # if [ "$hostname" = "$CONTROL_PLANE_MAIN_NODE" ]; then
-        #     kubernetes_kubeadm_control_plane_init $hostname
-        # else
-        #     kubernetes_kubeadm_control_plane_join $hostname
-        # fi
+        # Only use the first control plane node for the initialisation
+        if [ "$i" = 0 ]; then
+            kubernetes_kubeadm_control_plane_init "$node"
+        else
+            kubernetes_kubeadm_control_plane_join "$node"
+        fi
 
-        # # if [ "$hostname" = "fsn1-nd02.cxense.com" ]; then
-        # #     print_status "info" "Skipping control plane join for node $hostname"
-        # #     return 0
-        # # fi
-
-        kubernetes_kubelet_patch_config $hostname
-        # kubectl_label_node $hostname
+        kubernetes_kubelet_patch_config "$node"
+        kubernetes_kubectl_label_node "$node"
     done
 }
 
 
 ##########################################
-# Interact with the worker nodes
+# Install the worker nodes
 ##########################################
-function nodes_worker_manage() {
-    if [ "$VERBOSE" = true ]; then
-        print_status "info" "Managing worker nodes only"
-    fi
+function nodes_install_worker() {
+    local nodes="$1"
 
-    local worker_nodes_count=$(yq e '.worker_nodes | length' "$NODES_FILE")
-    for ((i=0; i<worker_nodes_count; i++)); do
-        hostname=$(yq e ".worker_nodes[$i].hostname" "$NODES_FILE")
-        print_status "info" "Managing worker node $hostname"
+    local nodes_count=$(echo "$nodes" | yq length)
+    local i
+    for ((i=0; i<nodes_count; i++)); do
+        local node=$(yq ".[$i]" <<< "$nodes")
 
-        sysctl_configuration $hostname
-        load_modules $hostname
-        packages_install $hostname
-        packages_runtime_install $hostname
-        haproxy_configure $hostname
-        kubernetes_kubeadm_worker_node_join $hostname
-
-        kubernetes_kubelet_patch_config $hostname
-        kubectl_label_node $hostname
+        sysctl_configuration "$node"
+        load_modules "$node"
+        packages_system_install "$node"
+        packages_runtime_install "$node"
+        packages_kubernetes_install "$node"
+        packages_haproxy_install "$node"
+        kubernetes_kubeadm_worker_join "$node"
+        kubernetes_kubelet_patch_config "$node"
+        kubernetes_kubectl_label_node "$node"
     done
 }

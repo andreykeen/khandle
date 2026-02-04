@@ -9,14 +9,11 @@ LIGHT_BLUE='\033[1;34m'
 NC='\033[0m' # No Colour
 
 # Global variables
-COMMAND=""
-NODES_FILE=""
-ALL_NODES=""
-CONTROL_PLANE_MAIN_NODE=""
 VERBOSE=false
 RETURN_OUTPUT=""
 
 
+source lib/manifest.sh
 source lib/nodes.sh
 source lib/ssh.sh
 source lib/sysctl.sh
@@ -42,7 +39,7 @@ function print_status() {
             echo -e "${YELLOW}[WARNING]${NC} $message"
             ;;
         "error")
-            echo -e "${RED}[ERROR]${NC} $message"
+            echo -e "${RED}[ERROR]${NC} $message" >&2
             ;;
     esac
 }
@@ -75,61 +72,6 @@ EOF
 
 
 ##########################################
-# Parse command line arguments
-##########################################
-function parse_arguments() {
-    if [[ $# -eq 0 ]]; then
-        show_usage
-        exit 0
-    fi
-
-    while [[ $# -gt 0 ]]; do
-        case $1 in
-            install)
-                COMMAND="install"
-                shift
-                ;;
-            update)
-                COMMAND="update"
-                shift
-                ;;
-            help)
-                show_usage
-                exit 0
-                ;;
-            -m|--manifest)
-                NODES_FILE="$2"
-                shift 2
-                ;;
-            *)
-                print_status "error" "Unknown command: $1"
-                show_usage
-                exit 1
-                ;;
-        esac
-    done
-}
-
-
-##########################################
-# Validate arguments
-##########################################
-function validate_arguments() {
-    if [ "$COMMAND" == "install" ]; then
-        if [ -z "$NODES_FILE" ]; then
-            print_status "error" "Nodes file is required"
-            show_usage
-            exit 1
-        fi
-        if [ ! -f "$NODES_FILE" ]; then
-            print_status "error" "Nodes file '$NODES_FILE' not found"
-            exit 1
-        fi
-    fi
-}
-
-
-##########################################
 # Check tools
 ##########################################
 function check_tools() {
@@ -148,24 +90,63 @@ function check_tools() {
 ##########################################
 function main() {
 
-    parse_arguments "$@"
-    validate_arguments
-    check_tools
+    # parse_arguments "$@"
 
-    # Create a new structure with both arrays preserved under 'nodes'
-    ALL_NODES=$(yq e '.nodes = (.control_planes + .worker_nodes) | with_entries(select(.key == "nodes"))' "$NODES_FILE")
-
-    # Get the main control plane node
-    CONTROL_PLANE_MAIN_NODE=$(yq e ".control_planes[0].hostname" "$NODES_FILE")
-    if [ "$CONTROL_PLANE_MAIN_NODE" = "null" ] || [ -z "$CONTROL_PLANE_MAIN_NODE" ]; then
-        print_status "error" "There should be at least one control plane node in the manifest"
-        exit 1
+    if [[ $# -eq 0 ]]; then
+        show_usage
+        exit 0
     fi
 
-    case $COMMAND in
+    local command=""
+    local manifest_file=""
+
+    while [[ $# -gt 0 ]]; do
+        case $1 in
+            install)
+                command="install"
+                shift
+                ;;
+            update)
+                command="update"
+                shift
+                ;;
+            help)
+                show_usage
+                exit 0
+                ;;
+            -m|--manifest)
+                manifest_file="$2"
+                shift 2
+                ;;
+            *)
+                print_status "error" "Unknown command: $1"
+                show_usage
+                exit 1
+                ;;
+        esac
+    done
+
+
+    if [ "$command" == "install" ]; then
+        if [ -z "$manifest_file" ]; then
+            print_status "error" "Manifest file is required"
+            show_usage
+            exit 1
+        fi
+        if [ ! -f "$manifest_file" ]; then
+            print_status "error" "Manifest file '$manifest_file' not found"
+            exit 1
+        fi
+    fi
+
+    manifest_read_yaml_file "$manifest_file"
+
+    check_tools
+
+    case $command in
         install)
             print_status "info" "Installing the cluster"
-            nodes_manage
+            nodes_install_cluster
             ;;
         update)
             print_status "info" "Updating the cluster"
