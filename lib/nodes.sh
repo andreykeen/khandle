@@ -22,12 +22,14 @@ function nodes_install_control_plane() {
     for ((i=0; i<nodes_count; i++)); do
         local node=$(yq ".[$i]" <<< "$nodes")
 
+        print_status "info" "------------------------------------------"
+        os_configuration_kubeapiserver_interface "$node"
         sysctl_configuration "$node"
         load_modules "$node"
         packages_system_install "$node"
         packages_runtime_install "$node"
-        packages_kubernetes_install "$node"
         packages_haproxy_install "$node"
+        kubernetes_install "$node"
 
         # Only use the first control plane node for the initialisation
         if [ "$i" = 0 ]; then
@@ -35,6 +37,8 @@ function nodes_install_control_plane() {
         else
             kubernetes_kubeadm_control_plane_join "$node"
         fi
+
+        kubernetes_kubeadm_upgrade "$node"
 
         kubernetes_kubelet_patch_config "$node"
         kubernetes_kubectl_label_node "$node"
@@ -53,12 +57,13 @@ function nodes_install_worker() {
     for ((i=0; i<nodes_count; i++)); do
         local node=$(yq ".[$i]" <<< "$nodes")
 
+        print_status "info" "------------------------------------------"
         sysctl_configuration "$node"
         load_modules "$node"
         packages_system_install "$node"
         packages_runtime_install "$node"
-        packages_kubernetes_install "$node"
         packages_haproxy_install "$node"
+        kubernetes_install "$node"
         kubernetes_kubeadm_worker_join "$node"
         kubernetes_kubelet_patch_config "$node"
         kubernetes_kubectl_label_node "$node"

@@ -1,4 +1,54 @@
 ##########################################
+# Install Kubernetes
+##########################################
+function kubernetes_install() {
+    local node="$1"
+
+    local hostname=$(yq ".hostname" <<< "$node")
+    local version_full=$(yq ".kubernetes.version" <<< "$node")
+    local version_minor=$(echo "$version_full" | awk -F'.' '{print $1 "." $2}')
+
+    local installing_components=""
+
+    run_commands_on_node "$node" "sudo dpkg-query -W -f='\${Package} \${Version}\n' kube* 2>/dev/null || true"
+    if [[ "$RETURN_OUTPUT" != *"kubeadm ${version_full}"* ]]; then
+        installing_components+="kubeadm=${version_full}* "
+    fi
+    if [[ "$RETURN_OUTPUT" != *"kubelet ${version_full}"* ]]; then
+        installing_components+="kubelet=${version_full}* "
+    fi
+    if [[ "$RETURN_OUTPUT" != *"kubectl ${version_full}"* ]]; then
+        installing_components+="kubectl=${version_full}* "
+    fi
+    # run_commands_on_node "$node" "sudo dpkg-query -W -f='\${Package} \${Version}\n' cri-tools 2>/dev/null || true"
+    # if [[ "$RETURN_OUTPUT" != *"cri-tools ${version_full}"* ]]; then
+    #     installing_components+="cri-tools=${version_full}* "
+    # fi
+
+    # echo "installing_components: $installing_components"
+    # exit 0
+
+    if [[ -n "${installing_components}" ]]; then
+        print_status "info" "${hostname}: Installing Kubernetes components: ${installing_components}"
+
+        run_commands_on_node "${node}" "sudo mkdir -p -m 755 /etc/apt/keyrings && \
+            curl -fsSL https://pkgs.k8s.io/core:/stable:/v${version_minor}/deb/Release.key | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
+            sudo chmod 0644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg && \
+            echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v${version_minor}/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list && \
+            sudo apt-get update && \
+            sudo apt-get install -y --allow-downgrades --allow-change-held-packages $installing_components && \
+            sudo apt-mark hold kubelet kubeadm kubectl && \
+            sudo systemctl enable --now kubelet && \
+            sudo systemctl restart kubelet"
+        print_status "info" "${hostname}: Restarting kubelet to apply the new version"
+    else
+        print_status "info" "${hostname}: Kubernetes components are already installed and up to date"
+    fi
+
+}
+
+
+##########################################
 # Initialise control plane
 ##########################################
 function kubernetes_kubeadm_control_plane_init() {
@@ -6,6 +56,13 @@ function kubernetes_kubeadm_control_plane_init() {
 
     local hostname=$(yq ".hostname" <<< "$node")
 
+    run_commands_on_node "$node" "test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
+    if [[ "$RETURN_OUTPUT" == "exists" ]]; then
+        print_status "info" "$hostname: Control plane is already initialised"
+        return
+    fi
+
+    local version_full=$(yq ".kubernetes.version" <<< "$node")
     local apiserver_cert_extra_sans=$(manifest_read_yaml ".cluster_network.apiserver_cert_extra_sans | join(\",\")")
     local control_plane_endpoint=$(manifest_read_yaml ".cluster_network.control_plane_endpoint")
     local pod_network_cidr=$(manifest_read_yaml ".cluster_network.pod_network_cidr")
@@ -13,7 +70,7 @@ function kubernetes_kubeadm_control_plane_init() {
     local kube_proxy_enabled=$(manifest_read_yaml ".cluster_network.kube_proxy.enabled")
     local apiserver_advertise_address=$(yq ".kubernetes.apiserver_advertise_address" <<< "$node")
 
-    local kubeadm_init_command="sudo kubeadm init"
+    local kubeadm_init_command="sudo kubeadm init --kubernetes-version=${version_full}"
 
     if [ -n "$apiserver_cert_extra_sans" ] && [ "$apiserver_cert_extra_sans" != "null" ]; then
         kubeadm_init_command+=" --apiserver-cert-extra-sans=$apiserver_cert_extra_sans"
@@ -39,13 +96,8 @@ function kubernetes_kubeadm_control_plane_init() {
         kubeadm_init_command+=" --skip-phases=addon/kube-proxy"
     fi
 
-    run_commands_on_node "$node" "test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
-    if [ "$RETURN_OUTPUT" = "doesnotexist" ]; then
-        print_status "info" "$hostname: Initialising control plane with command: $kubeadm_init_command"
-        run_commands_on_node "$node" "$kubeadm_init_command"
-    else
-        print_status "info" "$hostname: Control plane is already initialised"
-    fi
+    print_status "info" "$hostname: Initialising control plane with command: $kubeadm_init_command"
+    run_commands_on_node "$node" "$kubeadm_init_command"
 
     kubernetes_kubeadm_control_plane_download_kubeconfig "$node"
 }
@@ -131,6 +183,33 @@ function kubernetes_kubeadm_worker_join() {
         run_commands_on_node "$node" "sudo $join_command"
     else
         print_status "info" "$hostname: The node is already joined to the cluster"
+    fi
+}
+
+
+##########################################
+# Upgrade Kubernetes
+##########################################
+function kubernetes_kubeadm_upgrade() {
+    local node="$1"
+
+    local hostname=$(yq ".hostname" <<< "$node")
+    local version_full=$(yq ".kubernetes.version" <<< "$node")
+
+    run_commands_on_node "$node" "sudo yq '.spec.containers[] | select(.name == \"kube-apiserver\") | .image' /etc/kubernetes/manifests/kube-apiserver.yaml"
+    if [[ "$RETURN_OUTPUT" == *"${version_full}"* ]]; then
+        print_status "info" "${hostname}: kube-apiserver is already up to date"
+        return
+    fi
+
+    # If the node is the main control plane node, then we need to upgrade the control plane
+    local control_plane_main_node_hostname=$(manifest_read_yaml "[.nodes[] | select(.control_plane == true)] | .[0].hostname")
+    if [[ "${control_plane_main_node_hostname}" == "${hostname}" ]]; then
+        print_status "info" "${hostname}: Upgrading kube-apiserver to version: $version_full on the main control plane node"
+        run_commands_on_node "$node" "sudo kubeadm upgrade apply ${version_full} --yes"
+    else
+        print_status "info" "${hostname}: Upgrading kube-apiserver to version: $version_full on the other control plane nodes"
+        run_commands_on_node "$node" "sudo kubeadm upgrade node"
     fi
 }
 
@@ -230,6 +309,6 @@ function kubernetes_kubectl_label_node() {
         local labels_string=$(echo "$node_labels" | tr -s ':' '=' | tr -d ' ' | tr -s '\n' ' ')
 
         local control_plane_main_node=$(manifest_read_yaml "[.nodes[] | select(.control_plane == true)] | .[0]")
-        run_commands_on_node "$control_plane_main_node" "sudo kubectl --kubeconfig /etc/kubernetes/admin.conf label node $hostname $labels_string"
+        run_commands_on_node "$control_plane_main_node" "sudo kubectl --kubeconfig /etc/kubernetes/admin.conf label --overwrite node $hostname $labels_string"
     fi
 }

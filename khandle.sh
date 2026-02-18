@@ -53,7 +53,7 @@ function show_usage() {
 Usage: $0 [COMMAND] [OPTIONS]
 
 Commands:
-    install    Install the cluster
+    apply      Apply the cluster
     update     Update the cluster
     help       Show this help message
 
@@ -63,7 +63,7 @@ Options:
     -d, --dry-run                Show what would be executed without running commands
 
 Examples:
-    $0 install -m nodes.yaml
+    $0 apply -m nodes.yaml
     $0 update -m nodes.yaml
     $0 help
 
@@ -102,8 +102,8 @@ function main() {
 
     while [[ $# -gt 0 ]]; do
         case $1 in
-            install)
-                command="install"
+            apply)
+                command="apply"
                 shift
                 ;;
             update)
@@ -127,7 +127,7 @@ function main() {
     done
 
 
-    if [ "$command" == "install" ]; then
+    if [ "$command" == "apply" ]; then
         if [ -z "$manifest_file" ]; then
             print_status "error" "Manifest file is required"
             show_usage
@@ -144,8 +144,8 @@ function main() {
     check_tools
 
     case $command in
-        install)
-            print_status "info" "Installing the cluster"
+        apply)
+            print_status "info" "Applying the cluster"
             nodes_install_cluster
             ;;
         update)

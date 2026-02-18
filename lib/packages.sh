@@ -8,7 +8,7 @@ function packages_system_install() {
     print_status "info" "$hostname: Installing system packages"
 
     run_commands_on_node "$node" "sudo apt-get update && \
-        sudo apt-get install -y apt-transport-https ca-certificates curl gpg"
+        sudo apt-get install -y apt-transport-https ca-certificates curl gpg conntrack"
 
     run_commands_on_node "$node" "sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq"
 }
@@ -51,34 +51,6 @@ EOF"
     else
         print_status "info" "$hostname: crictl configuration already exists"
     fi
-}
-
-
-##########################################
-# Install Kubernetes
-##########################################
-function packages_kubernetes_install() {
-    local node="$1"
-
-    local hostname=$(yq ".hostname" <<< "$node")
-    print_status "info" "$hostname: Installing Kubernetes packages"
-
-    run_commands_on_node "$node" "sudo whereis kubelet | sed 's/^.*://g'"
-    if [ -z "$RETURN_OUTPUT" ]; then
-        print_status "info" "$hostname: Installing kubelet kubeadm kubectl"
-
-        run_commands_on_node "$node" "sudo mkdir -p -m 755 /etc/apt/keyrings"
-        run_commands_on_node "$node" "curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.34/deb/Release.key | sudo gpg --batch --yes --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg"
-        run_commands_on_node "$node" "sudo chmod 0644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg"
-        run_commands_on_node "$node" "echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.34/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list"
-        run_commands_on_node "$node" "sudo apt-get update && \
-            sudo apt-get install -y kubelet kubeadm kubectl && \
-            sudo apt-mark hold kubelet kubeadm kubectl && \
-            sudo systemctl enable --now kubelet"
-    else
-        print_status "info" "$hostname: kubelet kubeadm kubectl are already installed"
-    fi
-
 }
 
 
