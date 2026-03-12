@@ -1,0 +1,18 @@
+---
+installation:
+  cni:
+    type: Calico
+  calicoNetwork:
+    bgp: Disabled
+    ipPools:
+      - name: default-ipv4-ippool
+        blockSize: 24
+        cidr: 172.17.0.0/18
+        encapsulation: VXLAN
+        natOutgoing: Enabled
+        nodeSelector: all()
+    nodeAddressAutodetectionV4:
+      cidrs:
+        - 10.1.0.0/24
+apiServer:
+  enabled: true

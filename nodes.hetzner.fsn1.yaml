@@ -1,0 +1,70 @@
+---
+global:
+  cluster_name: "hetzner.fsn1"
+  ssh_connection:
+    port: 22
+    username: root
+    private_key: ~/.ssh/piano-nodebot-new
+    connect_through: public_ip # Possible values: hostname, public_ip, private_ip
+    use_bastion: false
+
+# bastion:
+#   address: 3.124.190.79
+#   port: 22
+#   username: ubuntu
+#   private_key: ~/.ssh/aws-khandle-bastion-node
+
+cluster_network:
+  apiserver_cert_extra_sans:
+    - 127.0.0.1
+    - 49.12.34.33
+  control_plane_endpoint: 169.254.10.10:6444
+  pod_network_cidr: 172.16.0.0/18
+  service_dns_domain: ""
+  kube_proxy:
+    enabled: false
+
+control_planes:
+  - hostname: fsn1-nd01.cxense.com
+    public_ip: 49.12.34.33
+    private_ip: 10.0.0.2
+    kubernetes:
+      version: 1.32.0
+      labels:
+        node.kubernetes.io/instance-type: "cpx22"
+      # kubelet:
+      #   config:
+      #     systemReserved:
+      #       cpu: 1000m
+      #       memory: 1Gi
+      #   kubelet_kubeadm_args: []
+  - hostname: fsn1-nd02.cxense.com
+    public_ip: 49.13.56.83
+    private_ip: 10.0.0.3
+    kubernetes:
+      version: 1.32.0
+      labels:
+        node.kubernetes.io/instance-type: "cpx22"
+#   - hostname: fsn1-nd03.cxense.com
+#     public_ip: 49.13.56.83
+#     private_ip: 10.0.0.4
+#     kubernetes:
+#       version: 1.32.0
+#       labels:
+#         node.kubernetes.io/instance-type: "cpx22"
+
+# worker_nodes:
+#   - hostname: fsn1-nd04.cxense.com
+#     public_ip: 91.99.187.93
+#     private_ip: 10.0.0.5
+#     kubernetes:
+#       version: 1.32.0
+#       labels:
+#         node-role.kubernetes.io/worker: ""
+#         node.kubernetes.io/instance-type: "cpx22"
+#       kubelet:
+#         config:
+#           maxPods: 220
+#           systemReserved:
+#             cpu: 1000m
+#             memory: 2Gi

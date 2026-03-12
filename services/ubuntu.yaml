@@ -1,0 +1,56 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: debug-ubuntu
+  labels:
+    app: debug-ubuntu
+  annotations:
+    k8s.v1.cni.cncf.io/networks: macvlan-conf
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: debug-ubuntu
+  template:
+    metadata:
+      labels:
+        app: debug-ubuntu
+    spec:
+      containers:
+        - name: debug-ubuntu
+          image: ubuntu:24.04
+          command: ["sh", "-c"]
+          args:
+            - |
+              apt-get update && apt-get install -y curl jq dnsutils iproute2 iperf3 iputils-ping netcat-openbsd net-tools gnupg postgresql-client
+              while true; do
+                sleep 5
+              done
+          env:
+            - name: TZ
+              value: UTC
+
+      # tolerations:
+      #   - effect: NoSchedule
+      #     key: node-role.kubernetes.io/master
+      #   - effect: NoSchedule
+      #     key: node-role.kubernetes.io/control-plane
+      #   - key: CriticalAddonsOnly
+      #     operator: Exists
+      #   - effect: NoExecute
+      #     key: node.kubernetes.io/not-ready
+      #     operator: Exists
+      #     tolerationSeconds: 300
+      #   - effect: NoExecute
+      #     key: node.kubernetes.io/unreachable
+      #     operator: Exists
+      #     tolerationSeconds: 300
+
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #         - matchExpressions:
+      #             - key: node-role.kubernetes.io/worker
+      #               operator: Exists

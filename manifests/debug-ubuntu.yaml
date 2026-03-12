@@ -1,0 +1,44 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: debug-ubuntu
+  labels:
+    app: debug-ubuntu
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: debug-ubuntu
+  template:
+    metadata:
+      labels:
+        app: debug-ubuntu
+    spec:
+      containers:
+        - name: debug-ubuntu
+          image: ubuntu:24.04
+          command: ["sh", "-c"]
+          args:
+            - |
+              apt-get update && apt-get install -y curl jq dnsutils iproute2 iputils-ping netcat-openbsd net-tools gnupg postgresql-client screen iperf3
+              while true; do
+                sleep 5
+              done
+          env:
+            - name: TZ
+              value: UTC
+            - name: HOST_IP
+              valueFrom:
+                fieldRef:
+                  apiVersion: v1
+                  fieldPath: status.hostIP
+          # ports:
+          #   - containerPort: 5201
+          #     hostPort: 5201
+          #     name: http
+          #     protocol: TCP
+      hostNetwork: true
+
+
+# kubectl patch pod debug-ubuntu --subresource resize --patch '{"spec":{"containers":[{"name":"debug-ubuntu", "resources":{"requests":{"cpu":"200m", "memory":"256Mi"}, "limits":{"cpu":"400m", "memory":"512Mi"}}}]}}'

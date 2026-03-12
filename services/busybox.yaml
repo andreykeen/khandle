@@ -1,0 +1,57 @@
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: debug-ubuntu
+  labels:
+    app: debug-ubuntu
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: debug-ubuntu
+  template:
+    metadata:
+      labels:
+        app: debug-ubuntu
+    spec:
+      containers:
+        - name: debug-ubuntu
+          # image: ubuntu:24.04
+          image: busybox:latest
+          command: ["sh", "-c"]
+          args:
+            - |
+              while true; do
+                sleep 5
+              done
+          env:
+            - name: TZ
+              value: UTC
+
+      # nodeSelector:
+      #   kubernetes.io/hostname: de1576
+
+      # affinity:
+      #   nodeAffinity:
+      #     requiredDuringSchedulingIgnoredDuringExecution:
+      #       nodeSelectorTerms:
+      #         - matchExpressions:
+      #             - key: node-role.kubernetes.io/worker
+      #               operator: Exists
+
+      tolerations:
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/master
+        - effect: NoSchedule
+          key: node-role.kubernetes.io/control-plane
+        - key: CriticalAddonsOnly
+          operator: Exists
+        - effect: NoExecute
+          key: node.kubernetes.io/not-ready
+          operator: Exists
+          tolerationSeconds: 300
+        - effect: NoExecute
+          key: node.kubernetes.io/unreachable
+          operator: Exists
+          tolerationSeconds: 300

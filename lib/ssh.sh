@@ -97,10 +97,10 @@ run_commands_on_node() {
         print_status "error" "$hostname: SSH output: $output"
         exit 1
     fi
-    if [ "$VERBOSE" = true ]; then
-        echo "-------------------- OUTPUT from $hostname ($connection_address) --------------------"
-        echo "$output"
-        echo "-------------------- END OUTPUT from $hostname ($connection_address) -------------------- "
-    fi
+    # if [ "$VERBOSE" = true ]; then
+    #     echo "-------------------- OUTPUT from $hostname ($connection_address) --------------------"
+    #     echo "$output"
+    #     echo "-------------------- END OUTPUT from $hostname ($connection_address) -------------------- "
+    # fi
     RETURN_OUTPUT="$output"
 }

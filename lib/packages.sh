@@ -4,11 +4,11 @@
 function packages_system_install() {
     local node="$1"
 
-    local hostname=$(yq ".hostname" <<< "$node")
+    local hostname=$(yq ".hostname" <<< "${node}")
     print_status "info" "$hostname: Installing system packages"
 
     run_commands_on_node "$node" "sudo apt-get update && \
-        sudo apt-get install -y apt-transport-https ca-certificates curl gpg conntrack"
+        sudo apt-get install -y apt-transport-https ca-certificates curl gpg conntrack net-tools"
 
     run_commands_on_node "$node" "sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq"
 }
@@ -19,37 +19,33 @@ function packages_system_install() {
 ##########################################
 function packages_runtime_install() {
     local node="$1"
-
-    local hostname=$(yq ".hostname" <<< "$node")
-    print_status "info" "$hostname: Installing runtime packages"
+    local hostname=$(yq ".hostname" <<< "${node}")
 
     run_commands_on_node "$node" "sudo whereis containerd | sed 's/^.*://g'"
-    if [ -z "$RETURN_OUTPUT" ]; then
-        print_status "info" "$hostname: Installing containerd"
-
-        run_commands_on_node "$node" "sudo apt-get update && sudo apt-get install -y containerd"
-        run_commands_on_node "$node" "sudo mkdir -p /etc/containerd"
-        run_commands_on_node "$node" "sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null"
-        run_commands_on_node "$node" "sudo sed -ri 's/^(\s*)SystemdCgroup\s*=.*/\1SystemdCgroup = true/' /etc/containerd/config.toml"
-        run_commands_on_node "$node" "sudo systemctl daemon-reload"
-        run_commands_on_node "$node" "sudo systemctl enable --now containerd"
-        run_commands_on_node "$node" "sudo systemctl restart containerd"
+    if [[ -z "$RETURN_OUTPUT" ]]; then
+        print_status "info" "${hostname}: Installing containerd"
+        run_commands_on_node "${node}" "sudo apt-get update && sudo apt-get install -y containerd"
+        run_commands_on_node "${node}" "sudo mkdir -p /etc/containerd"
+        run_commands_on_node "${node}" "sudo containerd config default | sudo tee /etc/containerd/config.toml >/dev/null"
+        run_commands_on_node "${node}" "sudo sed -ri 's/^(\s*)SystemdCgroup\s*=.*/\1SystemdCgroup = true/' /etc/containerd/config.toml"
+        run_commands_on_node "${node}" "sudo systemctl daemon-reload"
+        run_commands_on_node "${node}" "sudo systemctl enable --now containerd"
+        run_commands_on_node "${node}" "sudo systemctl restart containerd"
     else
-        print_status "info" "$hostname: containerd is already installed"
+        print_status "verbose" "${hostname}: containerd is already installed"
     fi
 
-    run_commands_on_node "$node" "sudo test -f /etc/crictl.yaml && echo 'exists' || echo 'doesnotexist'"
-    if [ "$RETURN_OUTPUT" = "doesnotexist" ]; then
-        print_status "info" "$hostname: Creating crictl configuration"
-
-        run_commands_on_node "$node" "sudo tee /etc/crictl.yaml > /dev/null <<EOF
+    run_commands_on_node "${node}" "sudo test -f /etc/crictl.yaml && echo 'exists' || echo 'doesnotexist'"
+    if [[ "${RETURN_OUTPUT}" == "doesnotexist" ]]; then
+        print_status "info" "${hostname}: Creating crictl configuration"
+        run_commands_on_node "${node}" "sudo tee /etc/crictl.yaml > /dev/null <<EOF
 runtime-endpoint: unix:///run/containerd/containerd.sock
 image-endpoint: unix:///run/containerd/containerd.sock
 timeout: 10
 debug: false
 EOF"
     else
-        print_status "info" "$hostname: crictl configuration already exists"
+        print_status "verbose" "${hostname}: crictl configuration already exists"
     fi
 }
 
@@ -57,18 +53,19 @@ EOF"
 ##########################################
 # Install haproxy
 ##########################################
+# How to check if haproxy is running?
+# curl -k https://169.254.10.10:6444/version
 function packages_haproxy_install() {
     local node="$1"
+    local hostname=$(yq ".hostname" <<< "${node}")
 
-    local hostname=$(yq ".hostname" <<< "$node")
-
-    run_commands_on_node "$node" "sudo whereis haproxy | sed 's/^.*://g'"
-    if [ -z "$RETURN_OUTPUT" ]; then
-        print_status "info" "$hostname: Installing haproxy"
-        run_commands_on_node "$node" "sudo apt-get update && sudo apt-get install -y haproxy \
+    run_commands_on_node "${node}" "sudo whereis haproxy | sed 's/^.*://g'"
+    if [[ -z "$RETURN_OUTPUT" ]]; then
+        print_status "info" "${hostname}: Installing haproxy"
+        run_commands_on_node "${node}" "sudo apt-get update && sudo apt-get install -y haproxy \
             && sudo systemctl enable --now haproxy && sudo systemctl start haproxy"
     else
-        print_status "info" "$hostname: haproxy is already installed"
+        print_status "verbose" "${hostname}: haproxy is already installed"
     fi
 
     # Generate HAProxy config with dynamic server entries
@@ -104,20 +101,28 @@ backend control-plane
 
     # Add server entries for each control plane node
     local cp_nodes=$(manifest_read_yaml "[.nodes[] | select(.control_plane == true)]")
-    local cp_nodes_count=$(echo "$cp_nodes" | yq length)
+    local cp_nodes_count=$(echo "${cp_nodes}" | yq length)
     local i
     for ((i=0; i<cp_nodes_count; i++)); do
-        local backend_host=$(yq ".[$i].hostname" <<< "$cp_nodes")
-        local backend_ip=$(yq ".[$i].private_ip" <<< "$cp_nodes")
+        local backend_host=$(yq ".[$i].hostname" <<< "${cp_nodes}")
+        local backend_ip=$(yq ".[$i].kubernetes.apiserver_advertise_address" <<< "${cp_nodes}")
         haproxy_config+="
     server $backend_host $backend_ip:6443 check"
     done
 
-    print_status "info" "$hostname: Configuring haproxy"
-    run_commands_on_node "$node" "sudo tee /etc/haproxy/haproxy.cfg > /dev/null <<EOF
+    # Create a new haproxy config file in /tmp
+    run_commands_on_node "${node}" "sudo tee /tmp/haproxy.cfg > /dev/null <<EOF
 $haproxy_config
-EOF
-sudo systemctl reload haproxy"
+EOF"
+
+    run_commands_on_node "${node}" "sudo diff -q /tmp/haproxy.cfg /etc/haproxy/haproxy.cfg || true"
+    # If the return output is not empty, then update the haproxy config file
+    if [[ -n "$RETURN_OUTPUT" ]]; then
+        print_status "info" "${hostname}: Updating haproxy config file"
+        run_commands_on_node "${node}" "sudo mv /tmp/haproxy.cfg /etc/haproxy/haproxy.cfg && sudo systemctl reload haproxy"
+    else
+        print_status "verbose" "${hostname}: haproxy config file is already up to date"
+    fi
 }
 
 

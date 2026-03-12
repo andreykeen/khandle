@@ -1,0 +1,15 @@
+---
+recommender:
+  enabled: true
+  extraArgs:
+    feature-gates: InPlaceOrRecreate=true
+
+updater:
+  enabled: true
+  extraArgs:
+    feature-gates: InPlaceOrRecreate=true
+
+admissionController:
+  enabled: true
+  extraArgs:
+    feature-gates: InPlaceOrRecreate=true

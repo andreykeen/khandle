@@ -6,10 +6,12 @@ GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 LIGHT_BLUE='\033[1;34m'
+PURPLE='\033[0;35m'
 NC='\033[0m' # No Colour
 
 # Global variables
-VERBOSE=false
+VERBOSE="false"
+DRY_RUN="false"
 RETURN_OUTPUT=""
 
 
@@ -40,6 +42,11 @@ function print_status() {
             ;;
         "error")
             echo -e "${RED}[ERROR]${NC} $message" >&2
+            ;;
+        "verbose")
+            if [[ "${VERBOSE}" == "true" ]]; then
+                echo -e "${PURPLE}[VERBOSE]${NC} $message"
+            fi
             ;;
     esac
 }
@@ -117,6 +124,14 @@ function main() {
             -m|--manifest)
                 manifest_file="$2"
                 shift 2
+                ;;
+            -v|--verbose)
+                VERBOSE="true"
+                shift
+                ;;
+            -d|--dry-run)
+                DRY_RUN="true"
+                shift
                 ;;
             *)
                 print_status "error" "Unknown command: $1"

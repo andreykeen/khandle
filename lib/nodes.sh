@@ -17,31 +17,32 @@ function nodes_install_cluster() {
 function nodes_install_control_plane() {
     local nodes="$1"
 
-    local nodes_count=$(echo "$nodes" | yq length)
+    local nodes_count=$(echo "${nodes}" | yq length)
     local i
     for ((i=0; i<nodes_count; i++)); do
-        local node=$(yq ".[$i]" <<< "$nodes")
+        local node=$(yq ".[$i]" <<< "${nodes}")
+        local hostname=$(yq ".hostname" <<< "${node}")
 
-        print_status "info" "------------------------------------------"
-        os_configuration_kubeapiserver_interface "$node"
-        sysctl_configuration "$node"
-        load_modules "$node"
-        packages_system_install "$node"
-        packages_runtime_install "$node"
-        packages_haproxy_install "$node"
-        kubernetes_install "$node"
+        print_status "info" "---------- Working with ${hostname} ----------"
+        os_configuration_kubeapiserver_interface "${node}"
+        sysctl_configuration "${node}"
+        load_modules "${node}"
+        packages_system_install "${node}"
+        packages_runtime_install "${node}"
+        packages_haproxy_install "${node}"
+
+        kubernetes_install_binaries "${node}"
+        kubernetes_kubeadm_upgrade "${node}"
 
         # Only use the first control plane node for the initialisation
-        if [ "$i" = 0 ]; then
-            kubernetes_kubeadm_control_plane_init "$node"
+        if [[ "$i" == 0 ]]; then
+            kubernetes_kubeadm_control_plane_init "${node}"
         else
-            kubernetes_kubeadm_control_plane_join "$node"
+            kubernetes_kubeadm_control_plane_join "${node}"
         fi
 
-        kubernetes_kubeadm_upgrade "$node"
-
-        kubernetes_kubelet_patch_config "$node"
-        kubernetes_kubectl_label_node "$node"
+        kubernetes_kubelet_patch_config "${node}"
+        kubernetes_kubectl_label_node "${node}"
     done
 }
 
@@ -52,20 +53,24 @@ function nodes_install_control_plane() {
 function nodes_install_worker() {
     local nodes="$1"
 
-    local nodes_count=$(echo "$nodes" | yq length)
+    local nodes_count=$(echo "${nodes}" | yq length)
     local i
     for ((i=0; i<nodes_count; i++)); do
-        local node=$(yq ".[$i]" <<< "$nodes")
+        local node=$(yq ".[$i]" <<< "${nodes}")
+        local hostname=$(yq ".hostname" <<< "${node}")
 
-        print_status "info" "------------------------------------------"
-        sysctl_configuration "$node"
-        load_modules "$node"
-        packages_system_install "$node"
-        packages_runtime_install "$node"
-        packages_haproxy_install "$node"
-        kubernetes_install "$node"
-        kubernetes_kubeadm_worker_join "$node"
-        kubernetes_kubelet_patch_config "$node"
-        kubernetes_kubectl_label_node "$node"
+        print_status "info" "---------- Working with ${hostname} ----------"
+        os_configuration_kubeapiserver_interface "${node}"
+        sysctl_configuration "${node}"
+        load_modules "${node}"
+        packages_system_install "${node}"
+        packages_runtime_install "${node}"
+        packages_haproxy_install "${node}"
+
+        kubernetes_install_binaries "${node}"
+        kubernetes_kubeadm_upgrade "${node}"
+        kubernetes_kubeadm_worker_join "${node}"
+        kubernetes_kubelet_patch_config "${node}"
+        kubernetes_kubectl_label_node "${node}"
     done
 }

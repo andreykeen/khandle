@@ -1,0 +1,21 @@
+---
+installation:
+  cni:
+    type: Calico
+  calicoNetwork:
+    bgp: Disabled
+    # linuxDataplane: BPF
+    ipPools:
+      - name: default-ipv4-ippool
+        blockSize: 24
+        cidr: 172.16.0.0/18
+        encapsulation: VXLAN
+        natOutgoing: Enabled
+        nodeSelector: all()
+    nodeAddressAutodetectionV4:
+      cidrs:
+        - 10.0.0.0/24
+
+# kubernetesServiceEndpoint:
+#   host: "35.157.161.197"
+#   port: "6443"

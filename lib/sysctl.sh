@@ -29,7 +29,7 @@ WantedBy=multi-user.target
 EOF"
 
     # Check if the kubeapiserver interface is already created
-    run_commands_on_node "${node}" "test ! -f /etc/systemd/system/kubeapiserver.service && echo 'doesnotexist' || echo 'exists'"
+    run_commands_on_node "${node}" "[[ ! -f /etc/systemd/system/kubeapiserver.service ]] && echo 'doesnotexist' || echo 'exists'"
     # If the kubeapiserver interface is not created, then create it
     if [[ "$RETURN_OUTPUT" == "doesnotexist" ]]; then
         print_status "info" "${hostname}: Creating kubeapiserver interface"
@@ -48,7 +48,7 @@ EOF"
                 sudo systemctl enable kubeapiserver.service && \
                 sudo systemctl restart kubeapiserver.service"
         else
-            print_status "info" "${hostname}: Kubeapiserver interface is already up to date"
+            print_status "verbose" "${hostname}: Kubeapiserver interface is already up to date"
         fi
     fi
 }
