@@ -68,10 +68,10 @@ function kubernetes_kubeadm_upgrade() {
     local version_full=$(yq ".kubernetes.version" <<< "${node}")
     local node_is_control_plane=$(yq ".control_plane" <<< "${node}")
 
-    # Check if the control plane is initialised
+    # Check if the node is joined to the cluster
     run_commands_on_node "${node}" "test -f /etc/kubernetes/kubelet.conf && echo 'exists' || echo 'doesnotexist'"
     if [[ "${RETURN_OUTPUT}" == "doesnotexist" ]]; then
-        print_status "verbose" "${hostname}: Kubernetes node is not initialised. Skipping upgrade."
+        print_status "verbose" "${hostname}: Kubernetes node is not joined to the cluster. Skipping upgrade"
         return
     fi
 
@@ -79,9 +79,13 @@ function kubernetes_kubeadm_upgrade() {
     run_commands_on_node "${node}" "sudo kubeadm version --output short | tr -d 'v'"
     local current_version="${RETURN_OUTPUT}"
     if [[ "${current_version}" == "${version_full}" ]]; then
-        print_status "verbose" "${hostname}: Kubernetes ${version_full} version is already installed. Skipping upgrade."
+        print_status "verbose" "${hostname}: Kubernetes binaries are already at version: ${version_full}. Skipping upgrade."
         return
     fi
+
+
+    # TODO: Check version of the kubelet and kubectl binaries
+
 
     # Set the APT repository for the new version
     kubernetes_set_apt_repository "${node}"
@@ -101,12 +105,12 @@ function kubernetes_kubeadm_upgrade() {
         print_status "verbose" "${hostname}: Waiting for 90 seconds after the upgrade to allow the control plane to stabilise"
         sleep 90
     else
-        print_status "info" "${hostname}: Upgrading Kubernetes on the other control plane nodes to version: ${version_full}"
+        print_status "info" "${hostname}: Upgrading Kubernetes on the other nodes to version: ${version_full}"
         run_commands_on_node "${node}" "sudo kubeadm upgrade node"
     fi
 
-    # TODO:
     # Drain the node
+    kubernetes_drain_node "${node}"
 
     # Upgrade the kubelet
     print_status "info" "${hostname}: Upgrading kubelet and kubectl binaries to version: ${version_full}"
@@ -116,6 +120,9 @@ function kubernetes_kubeadm_upgrade() {
 
     print_status "verbose" "${hostname}: Waiting for 30 seconds after the kubelet upgrade to allow the node to stabilise"
     sleep 30
+
+    # Uncordon the node
+    kubernetes_uncordon_node "${node}"
 }
 
 
@@ -125,12 +132,25 @@ function kubernetes_kubeadm_upgrade() {
 function kubernetes_drain_node() {
     local node="$1"
     local hostname=$(yq ".hostname" <<< "${node}")
-
-    print_status "info" "${hostname}: Draining the node"
-
     local control_plane_main_node=$(manifest_read_yaml "[.nodes[] | select(.control_plane == true)] | .[0]")
+    local control_plane_main_node_hostname=$(yq ".hostname" <<< "${control_plane_main_node}")
 
+    print_status "info" "${hostname}: Running the drain command on ${control_plane_main_node_hostname}"
     run_commands_on_node "${control_plane_main_node}" "sudo kubectl drain ${hostname} --ignore-daemonsets --delete-emptydir-data --force"
+}
+
+
+##########################################
+# Uncordon node
+##########################################
+function kubernetes_uncordon_node() {
+    local node="$1"
+    local hostname=$(yq ".hostname" <<< "${node}")
+    local control_plane_main_node=$(manifest_read_yaml "[.nodes[] | select(.control_plane == true)] | .[0]")
+    local control_plane_main_node_hostname=$(yq ".hostname" <<< "${control_plane_main_node}")
+
+    print_status "info" "${hostname}: Running the uncordon command on ${control_plane_main_node_hostname}"
+    run_commands_on_node "${control_plane_main_node}" "sudo kubectl uncordon ${hostname}"
 }
 
 
@@ -139,22 +159,21 @@ function kubernetes_drain_node() {
 ##########################################
 function kubernetes_kubeadm_control_plane_init() {
     local node="$1"
+    local hostname=$(yq ".hostname" <<< "${node}")
 
-    local hostname=$(yq ".hostname" <<< "$node")
-
-    run_commands_on_node "$node" "test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
-    if [[ "$RETURN_OUTPUT" == "exists" ]]; then
+    run_commands_on_node "${node}" "test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
+    if [[ "${RETURN_OUTPUT}" == "exists" ]]; then
         print_status "verbose" "${hostname}: Control plane is already initialised"
         return
     fi
 
-    local version_full=$(yq ".kubernetes.version" <<< "$node")
+    local version_full=$(yq ".kubernetes.version" <<< "${node}")
     local apiserver_cert_extra_sans=$(manifest_read_yaml ".cluster_network.apiserver_cert_extra_sans | join(\",\")")
     local control_plane_endpoint=$(manifest_read_yaml ".cluster_network.control_plane_endpoint")
     local pod_network_cidr=$(manifest_read_yaml ".cluster_network.pod_network_cidr")
     local service_dns_domain=$(manifest_read_yaml ".cluster_network.service_dns_domain")
     local kube_proxy_enabled=$(manifest_read_yaml ".cluster_network.kube_proxy.enabled")
-    local apiserver_advertise_address=$(yq ".kubernetes.apiserver_advertise_address" <<< "$node")
+    local apiserver_advertise_address=$(yq ".kubernetes.apiserver_advertise_address" <<< "${node}")
     local image_repository=$(manifest_read_yaml ".global.image_repository")
 
     local kubeadm_init_command="sudo kubeadm init --kubernetes-version=${version_full}"
@@ -248,7 +267,6 @@ function kubernetes_kubeadm_control_plane_join() {
 
     print_status "info" "${hostname}: Joining to the control plane with command: ${join_command}"
     run_commands_on_node "${node}" "sudo ${join_command}"
-
 }
 
 
@@ -285,7 +303,6 @@ function kubernetes_kubelet_patch_config() {
     local kubelet_kubeadm_args=$(yq ".kubernetes.kubelet.kubelet_kubeadm_args[]" <<< "${node}")
     local kubelet_config_is_updated="no"
 
-
     ### Update the Kubelet config
     if [[ -n "${kubelet_config}" && "${kubelet_config}" != "null" ]]; then
         print_status "verbose" "${hostname}: Checking Kubelet config"
@@ -308,6 +325,8 @@ EOF"
             kubelet_config_is_updated="yes"
             print_status "info" "${hostname}: Kubelet config was updated"
         fi
+    else
+        print_status "verbose" "${hostname}: Kubelet config is not specified in the manifest"
     fi
 
 
@@ -358,17 +377,20 @@ EOF"
             kubelet_config_is_updated="yes"
             print_status "info" "${hostname}: Kubeadm flags env file was updated"
         fi
+    else
+        print_status "verbose" "${hostname}: Kubeadm flags env file is not specified in the manifest"
     fi
 
-    # Remove the temporary files
-    run_commands_on_node "${node}" "sudo rm -f \
-        /var/lib/kubelet/config-patch.yaml \
-        /var/lib/kubelet/config-original.yaml \
-        /var/lib/kubelet/config-updated.yaml \
-        /tmp/kubeadm-flags.env"
-
-    # Restart the kubelet to apply the new configuration
+    # If the kubelet config and/or kubeadm flags env file is updated, then remove the temporary files and restart the kubelet
     if [[ "${kubelet_config_is_updated}" == "yes" ]]; then
+        # Remove the temporary files
+        run_commands_on_node "${node}" "sudo rm -f \
+            /var/lib/kubelet/config-patch.yaml \
+            /var/lib/kubelet/config-original.yaml \
+            /var/lib/kubelet/config-updated.yaml \
+            /tmp/kubeadm-flags.env"
+
+        # Restart the kubelet to apply the new configuration
         print_status "info" "${hostname}: Restarting kubelet to apply the new configuration"
         run_commands_on_node "${node}" "sudo systemctl restart kubelet"
     fi
@@ -383,12 +405,31 @@ function kubernetes_kubectl_label_node() {
     local hostname=$(yq ".hostname" <<< "${node}")
     local node_labels=$(yq ".kubernetes.labels" <<< "${node}")
 
-    if [[ -n "${node_labels}" && "${node_labels}" != "null" ]]; then
-        print_status "info" "${hostname}: Labeling node"
+    if [[ "${node_labels}" == "null" ]] || [[ -z "${node_labels}" ]]; then
+        print_status "verbose" "${hostname}: Labels are not specified in the manifest"
+        return
+    fi
 
-        local labels_string=$(echo "${node_labels}" | tr -s ':' '=' | tr -d ' ' | tr -s '\n' ' ')
-        local control_plane_main_node=$(manifest_read_yaml "[.nodes[] | select(.control_plane == true)] | .[0]")
+    local control_plane_main_node=$(manifest_read_yaml "[.nodes[] | select(.control_plane == true)] | .[0]")
 
+    # Get the current labels of the node
+    run_commands_on_node "${control_plane_main_node}" "sudo kubectl --kubeconfig /etc/kubernetes/admin.conf get node ${hostname} --output yaml | yq '.metadata.labels'"
+    local current_node_labels="${RETURN_OUTPUT}"
+
+    local labels_string=""
+    while IFS= read -r label_key_value; do
+
+        local trimmed_label="$(echo ${label_key_value} | tr -s ':' '=' | tr -d ' ' | tr -s '\n' ' ')"
+
+        if [[  -n "$(echo ${current_node_labels} | grep -w "${label_key_value}")" ]]; then
+            print_status "verbose" "${hostname}: Label ${trimmed_label}is already set on the node"
+        else
+            labels_string+="${trimmed_label} "
+        fi
+    done <<< "${node_labels}"
+
+    if [[ -n "${labels_string}" ]]; then
+        print_status "info" "${hostname}: Labeling node with labels: ${labels_string}"
         run_commands_on_node "${control_plane_main_node}" "sudo kubectl --kubeconfig /etc/kubernetes/admin.conf label --overwrite node ${hostname} ${labels_string}"
     fi
 }

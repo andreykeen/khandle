@@ -1,16 +1,24 @@
 ##########################################
 # Install packages
 ##########################################
-function packages_system_install() {
+function packages_apt_install() {
     local node="$1"
-
     local hostname=$(yq ".hostname" <<< "${node}")
-    print_status "info" "$hostname: Installing system packages"
 
-    run_commands_on_node "$node" "sudo apt-get update && \
-        sudo apt-get install -y apt-transport-https ca-certificates curl gpg conntrack net-tools"
+    # Check if the APT packages are listed in the manifest
+    local apt_packages=$(manifest_read_yaml ".global.os.apt_packages[]")
+    if [[ "${apt_packages}" == "null" ]] || [[ -z "${apt_packages}" ]]; then
+        print_status "verbose" "${hostname}: APT packages are not listed in the manifest"
+        return
+    fi
 
-    run_commands_on_node "$node" "sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq"
+    local apt_packages_string=$(echo "${apt_packages[@]}" | tr '\n' ' ')
+
+    print_status "info" "${hostname}: Installing APT packages: ${apt_packages_string}"
+    run_commands_on_node "${node}" "sudo apt-get update && \
+        sudo apt-get install -y ${apt_packages_string}"
+
+    run_commands_on_node "${node}" "sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq"
 }
 
 
@@ -58,6 +66,14 @@ EOF"
 function packages_haproxy_install() {
     local node="$1"
     local hostname=$(yq ".hostname" <<< "${node}")
+
+
+    # Check if the control plane interface is enabled in the manifest
+    local control_plane_interface=$(manifest_read_yaml ".cluster_network.control_plane_interface")
+    if [[ "${control_plane_interface}" == "null" ]] || [[ -z "${control_plane_interface}" ]] || [[ "${control_plane_interface}" == "false" ]]; then
+        print_status "verbose" "${hostname}: Control plane interface is not enabled. Skipping haproxy installation"
+        return
+    fi
 
     run_commands_on_node "${node}" "sudo whereis haproxy | sed 's/^.*://g'"
     if [[ -z "$RETURN_OUTPUT" ]]; then

@@ -2,9 +2,31 @@
 # Install the cluster
 ##########################################
 function nodes_install_cluster() {
+    local specific_node_names="$1"
+    local specific_node_names_list="$(echo "${specific_node_names}" | tr ',' ' ')"
 
-    local control_plane_nodes=$(manifest_read_yaml "[.nodes[] | select(.control_plane == true)]")
-    local worker_nodes=$(manifest_read_yaml "[.nodes[] | select(.control_plane == false)]")
+    local control_plane_nodes=""
+    local worker_nodes=""
+
+    if [[ -n "${specific_node_names}" ]]; then
+        print_status "info" "Working with nodes: ${specific_node_names_list}"
+
+        local nodes_select_string=""
+        for node_name in ${specific_node_names_list}; do
+            nodes_select_string+=".hostname == \"${node_name}\" or "
+        done
+        nodes_select_string="${nodes_select_string% or }"
+
+        local nodes=$(manifest_read_yaml "[.nodes[] | select(${nodes_select_string})]")
+
+        if [[ -n "${nodes}" ]]; then
+            control_plane_nodes="$(yq "[.[] | select(.control_plane == true)]" <<< "${nodes}")"
+            worker_nodes="$(yq "[.[] | select(.control_plane == false)]" <<< "${nodes}")"
+        fi
+    else
+        local control_plane_nodes=$(manifest_read_yaml "[.nodes[] | select(.control_plane == true)]")
+        local worker_nodes=$(manifest_read_yaml "[.nodes[] | select(.control_plane == false)]")
+    fi
 
     nodes_install_control_plane "$control_plane_nodes"
     nodes_install_worker "$worker_nodes"
@@ -16,18 +38,18 @@ function nodes_install_cluster() {
 ##########################################
 function nodes_install_control_plane() {
     local nodes="$1"
-
     local nodes_count=$(echo "${nodes}" | yq length)
     local i
+
     for ((i=0; i<nodes_count; i++)); do
         local node=$(yq ".[$i]" <<< "${nodes}")
         local hostname=$(yq ".hostname" <<< "${node}")
 
         print_status "info" "---------- Working with ${hostname} ----------"
-        os_configuration_kubeapiserver_interface "${node}"
-        sysctl_configuration "${node}"
-        load_modules "${node}"
-        packages_system_install "${node}"
+        os_kubeapiserver_interface "${node}"
+        os_sysctl "${node}"
+        os_kernel_modules "${node}"
+        packages_apt_install "${node}"
         packages_runtime_install "${node}"
         packages_haproxy_install "${node}"
 
@@ -60,10 +82,10 @@ function nodes_install_worker() {
         local hostname=$(yq ".hostname" <<< "${node}")
 
         print_status "info" "---------- Working with ${hostname} ----------"
-        os_configuration_kubeapiserver_interface "${node}"
-        sysctl_configuration "${node}"
-        load_modules "${node}"
-        packages_system_install "${node}"
+        os_kubeapiserver_interface "${node}"
+        os_sysctl "${node}"
+        os_kernel_modules "${node}"
+        packages_apt_install "${node}"
         packages_runtime_install "${node}"
         packages_haproxy_install "${node}"
 

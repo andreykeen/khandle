@@ -18,7 +18,7 @@ RETURN_OUTPUT=""
 source lib/manifest.sh
 source lib/nodes.sh
 source lib/ssh.sh
-source lib/sysctl.sh
+source lib/os.sh
 source lib/packages.sh
 source lib/kubernetes.sh
 source lib/cni.sh
@@ -60,18 +60,19 @@ function show_usage() {
 Usage: $0 [COMMAND] [OPTIONS]
 
 Commands:
-    apply      Apply the cluster
-    update     Update the cluster
-    help       Show this help message
+    apply                     Apply the cluster
+    check_ssh_connections     Check SSH connections
+    help                      Show this help message
 
 Options:
     -m, --manifest <nodes.yaml>  Path to the nodes.yaml manifest file
     -v, --verbose                Enable verbose output
     -d, --dry-run                Show what would be executed without running commands
+    -n, --nodes <nodes_names>    Comma separated list of node names to work with
 
 Examples:
     $0 apply -m nodes.yaml
-    $0 update -m nodes.yaml
+    $0 check_ssh_connections -m nodes.yaml
     $0 help
 
 EOF
@@ -106,15 +107,15 @@ function main() {
 
     local command=""
     local manifest_file=""
-
+    local nodes_names=""
     while [[ $# -gt 0 ]]; do
         case $1 in
             apply)
                 command="apply"
                 shift
                 ;;
-            update)
-                command="update"
+            check_ssh_connections)
+                command="check_ssh_connections"
                 shift
                 ;;
             help)
@@ -132,6 +133,10 @@ function main() {
             -d|--dry-run)
                 DRY_RUN="true"
                 shift
+                ;;
+            -n|--nodes)
+                nodes_names="$2"
+                shift 2
                 ;;
             *)
                 print_status "error" "Unknown command: $1"
@@ -161,10 +166,11 @@ function main() {
     case $command in
         apply)
             print_status "info" "Applying the cluster"
-            nodes_install_cluster
+            nodes_install_cluster "$nodes_names"
             ;;
-        update)
-            print_status "info" "Updating the cluster"
+        check_ssh_connections)
+            print_status "info" "Checking SSH connections"
+            os_check_ssh_connections
             ;;
         help)
             show_usage
