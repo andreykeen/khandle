@@ -433,3 +433,37 @@ function kubernetes_kubectl_label_node() {
         run_commands_on_node "${control_plane_main_node}" "sudo kubectl --kubeconfig /etc/kubernetes/admin.conf label --overwrite node ${hostname} ${labels_string}"
     fi
 }
+
+
+##########################################
+# Renew certificates
+##########################################
+function kubernetes_kubeadm_certs_renew() {
+    local node="$1"
+    local hostname=$(yq ".hostname" <<< "${node}")
+
+    # Get the CSR names
+    run_commands_on_node "${node}" "sudo kubectl --kubeconfig /etc/kubernetes/admin.conf get csr --no-headers --ignore-not-found | awk '{print \$1}' | tr -s '\n' ' '"
+    local csr_names="${RETURN_OUTPUT}"
+
+    if [[ -n "${csr_names}" ]]; then
+        print_status "info" "${hostname}: CSRs found, renewing the certificates"
+        # Approve the CSRs
+        run_commands_on_node "${node}" "sudo kubectl --kubeconfig /etc/kubernetes/admin.conf certificate approve ${csr_names}"
+
+        # Wait for 30 seconds to allow the CSRs to be approved and issued
+        sleep 30
+
+        # Get the approved CSR names
+        run_commands_on_node "${node}" "sudo kubectl --kubeconfig /etc/kubernetes/admin.conf get csr --no-headers --ignore-not-found | grep 'Approved,Issued' | awk '{print \$1}' | tr -s '\n' ' '"
+        local approved_csr_names="${RETURN_OUTPUT}"
+        if [[ -n "${approved_csr_names}" ]]; then
+            print_status "info" "${hostname}: Approved CSRs found, deleting the remaining CSRs"
+            run_commands_on_node "${node}" "sudo kubectl --kubeconfig /etc/kubernetes/admin.conf delete csr ${approved_csr_names}"
+        else
+            print_status "info" "${hostname}: No approved CSRs found"
+        fi
+    else
+        print_status "verbose" "${hostname}: No CSRs found"
+    fi
+}

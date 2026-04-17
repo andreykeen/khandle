@@ -45,7 +45,7 @@ function nodes_install_control_plane() {
         local node=$(yq ".[$i]" <<< "${nodes}")
         local hostname=$(yq ".hostname" <<< "${node}")
 
-        print_status "info" "---------- Working with ${hostname} ----------"
+        print_status "info" "---------- Working with control plane node ${hostname} ----------"
         os_kubeapiserver_interface "${node}"
         os_sysctl "${node}"
         os_kernel_modules "${node}"
@@ -56,9 +56,10 @@ function nodes_install_control_plane() {
         kubernetes_install_binaries "${node}"
         kubernetes_kubeadm_upgrade "${node}"
 
-        # Only use the first control plane node for the initialisation
+        # Only use the first control plane node for running the commands
         if [[ "$i" == 0 ]]; then
             kubernetes_kubeadm_control_plane_init "${node}"
+            kubernetes_kubeadm_certs_renew "${node}"
         else
             kubernetes_kubeadm_control_plane_join "${node}"
         fi
@@ -81,7 +82,7 @@ function nodes_install_worker() {
         local node=$(yq ".[$i]" <<< "${nodes}")
         local hostname=$(yq ".hostname" <<< "${node}")
 
-        print_status "info" "---------- Working with ${hostname} ----------"
+        print_status "info" "---------- Working with worker node ${hostname} ----------"
         os_kubeapiserver_interface "${node}"
         os_sysctl "${node}"
         os_kernel_modules "${node}"
