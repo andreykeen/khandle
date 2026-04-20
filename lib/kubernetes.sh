@@ -77,15 +77,26 @@ function kubernetes_kubeadm_upgrade() {
 
     # Get the current kubeadm version
     run_commands_on_node "${node}" "sudo kubeadm version --output short | tr -d 'v'"
-    local current_version="${RETURN_OUTPUT}"
-    if [[ "${current_version}" == "${version_full}" ]]; then
+    local current_kubeadm_version="${RETURN_OUTPUT}"
+    print_status "verbose" "${hostname}: Current kubeadm version: ${current_kubeadm_version}"
+
+    # Get the current kubelet versions
+    run_commands_on_node "${node}" "sudo kubelet --version | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'"
+    local current_kubelet_version="${RETURN_OUTPUT}"
+    print_status "verbose" "${hostname}: Current kubelet version: ${current_kubelet_version}"
+
+    # Get the current kubectl versions
+    run_commands_on_node "${node}" "sudo kubectl version --client | grep 'Client Version:' | grep -oE '[0-9]+\.[0-9]+\.[0-9]+'"
+    local current_kubectl_version="${RETURN_OUTPUT}"
+    print_status "verbose" "${hostname}: Current kubectl version: ${current_kubectl_version}"
+
+    if [[ "${current_kubeadm_version}" == "${version_full}" && \
+        "${current_kubelet_version}" == "${version_full}" && \
+        "${current_kubectl_version}" == "${version_full}" \
+    ]]; then
         print_status "verbose" "${hostname}: Kubernetes binaries are already at version: ${version_full}. Skipping upgrade."
         return
     fi
-
-
-    # TODO: Check version of the kubelet and kubectl binaries
-
 
     # Set the APT repository for the new version
     kubernetes_set_apt_repository "${node}"
