@@ -147,7 +147,7 @@ function kubernetes_drain_node() {
     local control_plane_main_node_hostname=$(yq ".hostname" <<< "${control_plane_main_node}")
 
     print_status "info" "${hostname}: Running the drain command on ${control_plane_main_node_hostname}"
-    run_commands_on_node "${control_plane_main_node}" "sudo kubectl drain ${hostname} --ignore-daemonsets --delete-emptydir-data --force"
+    run_commands_on_node "${control_plane_main_node}" "sudo kubectl drain ${hostname} --ignore-daemonsets --delete-emptydir-data --force --grace-period=30"
 }
 
 
