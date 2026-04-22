@@ -318,17 +318,29 @@ function kubernetes_kubelet_patch_config() {
     if [[ -n "${kubelet_config}" && "${kubelet_config}" != "null" ]]; then
         print_status "verbose" "${hostname}: Checking Kubelet config"
 
-        # Backup the original config
-        run_commands_on_node "${node}" "if [ ! -f /var/lib/kubelet/config-original.yaml ]; then sudo cp /var/lib/kubelet/config.yaml /var/lib/kubelet/config-original.yaml; fi"
+        local timestamp=$(date +%Y-%m-%d-%H-%M-%S)
 
-        # Create the patch file
-        run_commands_on_node "${node}" "sudo tee /var/lib/kubelet/config-patch.yaml > /dev/null <<EOF
+        # Backup the original config
+        run_commands_on_node "${node}" "yq --version"
+        local yq_version="${RETURN_OUTPUT}"
+        if [[ "${yq_version}" != *"mikefarah"* ]]; then
+            print_status "error" "${hostname}: mikefarah yq version is not found"
+            exit 1
+        fi
+
+        # Backup the original config and create the patch file
+        run_commands_on_node "${node}" "sudo cp /var/lib/kubelet/config.yaml /var/lib/kubelet/config-original-${timestamp}.yaml && sudo tee /var/lib/kubelet/config-patch.yaml > /dev/null <<EOF
 $kubelet_config
 EOF"
         # Create the updated config file
         run_commands_on_node "${node}" "sudo yq eval-all 'select(fileIndex == 0) as \$orig | select(fileIndex == 1) as \$patch | (\$orig | delpaths([[\$patch | keys[]]])) * \$patch' /var/lib/kubelet/config.yaml /var/lib/kubelet/config-patch.yaml | yq 'sort_keys(..)' | sudo tee /var/lib/kubelet/config-updated.yaml > /dev/null"
 
         # Check if the kubelet config is updated
+        run_commands_on_node "${node}" "sudo test -f /var/lib/kubelet/config-updated.yaml && echo 'exists' || echo 'doesnotexist'"
+        if [[ "${RETURN_OUTPUT}" == "doesnotexist" ]]; then
+            print_status "error" "${hostname}: Kubelet config updated file does not exist"
+            exit 1
+        fi
         run_commands_on_node "${node}" "sudo diff -q /var/lib/kubelet/config.yaml /var/lib/kubelet/config-updated.yaml || true"
         # If the return output is not empty, then update the config
         if [[ -n "${RETURN_OUTPUT}" ]]; then
@@ -339,7 +351,6 @@ EOF"
     else
         print_status "verbose" "${hostname}: Kubelet config is not specified in the manifest"
     fi
-
 
     ### Update the Kubeadm flags env file
     if [[ -n "${kubelet_kubeadm_args}" && "${kubelet_kubeadm_args}" != "null" ]]; then
@@ -397,7 +408,6 @@ EOF"
         # Remove the temporary files
         run_commands_on_node "${node}" "sudo rm -f \
             /var/lib/kubelet/config-patch.yaml \
-            /var/lib/kubelet/config-original.yaml \
             /var/lib/kubelet/config-updated.yaml \
             /tmp/kubeadm-flags.env"
 
