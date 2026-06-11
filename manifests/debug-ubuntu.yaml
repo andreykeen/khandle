@@ -6,7 +6,7 @@ metadata:
   labels:
     app: debug-ubuntu
 spec:
-  replicas: 2
+  replicas: 1
   selector:
     matchLabels:
       app: debug-ubuntu
@@ -21,7 +21,7 @@ spec:
           command: ["sh", "-c"]
           args:
             - |
-              apt-get update && apt-get install -y curl jq dnsutils iproute2 iputils-ping netcat-openbsd net-tools gnupg postgresql-client screen iperf3
+              apt-get update && apt-get install -y curl jq dnsutils iproute2 iputils-ping netcat-openbsd net-tools gnupg iperf3
               while true; do
                 sleep 5
               done
@@ -38,7 +38,7 @@ spec:
           #     hostPort: 5201
           #     name: http
           #     protocol: TCP
-      hostNetwork: true
+      # hostNetwork: true
 
 
 # kubectl patch pod debug-ubuntu --subresource resize --patch '{"spec":{"containers":[{"name":"debug-ubuntu", "resources":{"requests":{"cpu":"200m", "memory":"256Mi"}, "limits":{"cpu":"400m", "memory":"512Mi"}}}]}}'

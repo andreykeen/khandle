@@ -1,0 +1,49 @@
+###
+### helm upgrade --install haproxy oci://registry-1.docker.io/bitnamicharts/haproxy --values ./haproxy.values.yaml
+###
+
+
+---
+global:
+  security:
+    allowInsecureImages: true
+image:
+  pullPolicy: Always
+replicaCount: 1
+service:
+  type: NodePort
+  ports:
+    - name: http
+      protocol: TCP
+      port: 8080
+      targetPort: http
+      nodePort: 31080
+containerPorts:
+  - name: http
+    containerPort: 8080
+
+configuration: |
+  global
+    log stdout format raw local0
+    maxconn 1024
+    stats socket /tmp/haproxy.socket mode 0666 level admin
+
+  resolvers local
+    accepted_payload_size 8192
+
+  defaults
+    mode tcp
+    log global
+    timeout client 60s
+    timeout connect 60s
+    timeout server 60s
+
+  frontend site8080
+    bind :8080 accept-proxy
+    mode tcp
+    default_backend nginxsite
+
+  backend nginxsite
+    mode tcp
+    balance roundrobin
+    server nginx nginx.default:80

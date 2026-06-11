@@ -1,0 +1,14 @@
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: prod-web
+spec:
+  gatewayClassName: cilium
+  listeners:
+    - name: prod-web-gw
+      protocol: HTTP
+      port: 8080
+      # hostname: nginx.example.com
+      allowedRoutes:
+        namespaces:
+          from: Same

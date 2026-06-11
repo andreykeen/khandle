@@ -1,0 +1,74 @@
+---
+cluster:
+  name: hetzner-hillsboro
+  id: 11
+
+operator:
+  replicas: 1
+
+kubeProxyReplacement: true
+k8sServiceHost: 169.254.10.10
+k8sServicePort: 6444
+
+ipam:
+  mode: "cluster-pool"
+  operator:
+    clusterPoolIPv4PodCIDRList: ["10.11.0.0/16"]
+    clusterPoolIPv4MaskSize: 24
+
+ipv4:
+  enabled: true
+ipv6:
+  enabled: false
+
+routingMode: tunnel
+
+policyAuditMode: true
+policyEnforcementMode: always
+
+hostFirewall:
+  enabled: true
+
+hubble:
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+  peerService:
+    clusterDomain: hetzner-hillsboro
+
+envoy:
+  enabled: false
+
+gatewayAPI:
+  enabled: false
+
+clustermesh:
+  useAPIServer: true
+  apiserver:
+    replicas: 1
+    service:
+      type: NodePort
+    tls:
+      auto:
+        enabled: true
+        method: cronJob
+        schedule: 0 0 1 */4 *
+  config:
+    enabled: true
+    clusters:
+      - name: hetzner-helsinki
+        ips:
+          - 135.181.106.231
+          - 95.216.171.147
+        port: 32379
+  cacheTTL: "300s"
+  enableEndpointSliceSynchronization: true
+  mcsapi:
+    enabled: true
+    installCRDs: true
+    corednsAutoConfigure:
+      enabled: true
+      coredns:
+        clusterDomain: hetzner-hillsboro
+        clustersetDomain: multicluster.cxense.com

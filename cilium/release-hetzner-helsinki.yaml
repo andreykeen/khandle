@@ -1,0 +1,78 @@
+---
+cluster:
+  name: hetzner-helsinki
+  id: 10
+
+operator:
+  replicas: 1
+
+kubeProxyReplacement: true
+k8sServiceHost: 169.254.10.10
+k8sServicePort: 6444
+
+ipv4:
+  enabled: true
+ipv6:
+  enabled: false
+
+ipam:
+  mode: "cluster-pool"
+  operator:
+    clusterPoolIPv4PodCIDRList: ["10.10.0.0/16"]
+    clusterPoolIPv4MaskSize: 24
+
+policyAuditMode: true
+policyEnforcementMode: always
+
+hostFirewall:
+  enabled: true
+
+routingMode: tunnel
+tunnelProtocol: vxlan
+
+hubble:
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+  peerService:
+    clusterDomain: hetzner-helsinki
+  tls:
+    auto:
+      method: cronJob
+
+envoy:
+  enabled: false
+
+gatewayAPI:
+  enabled: false
+
+clustermesh:
+  useAPIServer: true
+  apiserver:
+    replicas: 1
+    service:
+      type: NodePort
+      nodePort: 32379
+    tls:
+      auto:
+        enabled: true
+        method: cronJob
+        schedule: 0 0 1 */4 *
+  config:
+    enabled: true
+    clusters:
+      - name: gcore-manassas
+        port: 32379
+        ips:
+          - 82.158.117.60
+  cacheTTL: "300s"
+  enableEndpointSliceSynchronization: true
+  mcsapi:
+    enabled: true
+    installCRDs: true
+    corednsAutoConfigure:
+      enabled: true
+      coredns:
+        clusterDomain: hetzner-helsinki
+        clustersetDomain: mesh.local

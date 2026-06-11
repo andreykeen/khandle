@@ -1,0 +1,15 @@
+---
+apiVersion: cilium.io/v2
+kind: CiliumNetworkPolicy
+metadata:
+  name: clustermesh-debug-ubuntu-to-gcore-manassas-default-nginx
+spec:
+  endpointSelector:
+    matchLabels:
+      k8s:app: debug-ubuntu
+  egress:
+    - toEndpoints:
+        - matchLabels:
+            io.cilium.k8s.policy.cluster: gcore-manassas
+            io.cilium.k8s.namespace.labels.kubernetes.io/metadata.name: default
+            app.kubernetes.io/instance: nginx

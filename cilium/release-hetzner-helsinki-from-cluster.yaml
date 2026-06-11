@@ -1,0 +1,73 @@
+cluster:
+  id: 10
+  name: hetzner-helsinki
+clustermesh:
+  apiserver:
+    replicas: 2
+    service:
+      type: NodePort
+      nodePort: 32379
+      externalTrafficPolicy: Local
+    affinity:
+      podAntiAffinity:
+        requiredDuringSchedulingIgnoredDuringExecution:
+          - labelSelector:
+              matchLabels:
+                k8s-app: clustermesh-apiserver
+            topologyKey: kubernetes.io/hostname
+    tolerations:
+      - effect: NoSchedule
+        key: node-role.kubernetes.io/control-plane
+        operator: Exists
+    updateStrategy:
+      type: Recreate
+      rollingUpdate: null
+    tls:
+      auto:
+        enabled: true
+        method: cronJob
+        schedule: 0 0 1 */4 *
+  config:
+    clusters:
+      - ips:
+          - 82.158.117.60 # mnz-bm-0001
+          - 82.158.117.61 # mnz-bm-0002
+        name: gcore-manassas
+        port: 32379
+    enabled: true
+  useAPIServer: true
+envoy:
+  enabled: false
+gatewayAPI:
+  enabled: false
+hostFirewall:
+  enabled: true
+hubble:
+  peerService:
+    clusterDomain: hetzner-helsinki
+  relay:
+    enabled: true
+  tls:
+    auto:
+      method: cronJob
+  ui:
+    enabled: true
+ipam:
+  mode: cluster-pool
+  operator:
+    clusterPoolIPv4MaskSize: 24
+    clusterPoolIPv4PodCIDRList:
+      - 10.10.0.0/16
+ipv4:
+  enabled: true
+ipv6:
+  enabled: false
+k8sServiceHost: 169.254.10.10
+k8sServicePort: 6444
+kubeProxyReplacement: true
+operator:
+  replicas: 1
+policyAuditMode: false
+policyEnforcementMode: always
+routingMode: tunnel
+tunnelProtocol: vxlan

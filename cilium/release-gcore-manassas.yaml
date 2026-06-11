@@ -1,0 +1,73 @@
+---
+cluster:
+  name: gcore-manassas
+  id: 1
+
+operator:
+  replicas: 1
+
+kubeProxyReplacement: true
+k8sServiceHost: 169.254.10.10
+k8sServicePort: 6444
+
+ipam:
+  mode: "cluster-pool"
+  operator:
+    clusterPoolIPv4PodCIDRList: ["10.1.0.0/16"]
+    clusterPoolIPv4MaskSize: 24
+
+ipv4:
+  enabled: true
+ipv6:
+  enabled: false
+
+routingMode: tunnel
+
+policyAuditMode: true
+policyEnforcementMode: always
+
+hostFirewall:
+  enabled: true
+
+hubble:
+  relay:
+    enabled: true
+  ui:
+    enabled: true
+  peerService:
+    clusterDomain: gcore-manassas
+
+envoy:
+  enabled: false
+
+gatewayAPI:
+  enabled: false
+
+clustermesh:
+  useAPIServer: true
+  apiserver:
+    replicas: 1
+    service:
+      type: NodePort
+    tls:
+      auto:
+        enabled: true
+        method: cronJob
+        schedule: 0 0 1 */4 *
+  config:
+    enabled: true
+    clusters:
+      - name: hetzner-helsinki
+        port: 32379
+        ips:
+          - 95.216.171.30
+  cacheTTL: "300s"
+  enableEndpointSliceSynchronization: true
+  mcsapi:
+    enabled: true
+    installCRDs: true
+    corednsAutoConfigure:
+      enabled: true
+      coredns:
+        clusterDomain: gcore-manassas
+        clustersetDomain: mesh.local

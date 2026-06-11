@@ -1,0 +1,39 @@
+###
+### helm upgrade --install nginx oci://registry-1.docker.io/bitnamicharts/nginx --values ./nginx.values.yaml
+###
+
+---
+service:
+  type: ClusterIP
+  # type: NodePort
+  # nodePorts:
+  #   http: "30080"
+  #   https: "30443"
+  # externalTrafficPolicy: Local
+
+replicaCount: 1
+
+livenessProbe:
+  enabled: false
+readinessProbe:
+  enabled: false
+
+# ingress:
+#   enabled: false
+#   hostname: nginx.cxense.com
+#   path: /
+#   annotations:
+#     # cert-manager.io/cluster-issuer: letsencrypt
+#     traefik.ingress.kubernetes.io/router.entrypoints: websecure
+#   ingressClassName: traefik
+#   tls: false
+
+networkPolicy:
+  enabled: false
+
+resources:
+  limits:
+    memory: 128Mi
+  requests:
+    cpu: 100m
+    memory: 128Mi

@@ -1,0 +1,187 @@
+##########################################
+# Nodes access
+##########################################
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: node-external-control-access
+spec:
+  nodeSelector: {}
+  ingress:
+    - fromCIDRSet:
+        - cidrGroupRef: ssb-provider
+        - cidrGroupRef: piano-cato-network
+        # - cidrGroupRef: loadbalancer-ips
+      toPorts:
+        - ports:
+            - port: "22"
+              protocol: TCP
+            - port: "6444"
+              protocol: TCP
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: node-internal-communication
+spec:
+  nodeSelector: {}
+  ingress:
+    - fromEntities:
+        - cluster
+    - fromCIDRSet:
+        - cidrGroupRef: cluster-private-ips
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: node-outbound
+spec:
+  nodeSelector: {}
+  egress:
+    - toEntities:
+        - all
+
+
+##########################################
+# Endpoints communication
+##########################################
+---
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: endpoint-internal-communication
+spec:
+  endpointSelector: {}
+  ingress:
+    - fromEntities:
+        - cluster
+  egress:
+    - toEntities:
+        - cluster
+        - world
+
+
+##########################################
+# Clustermesh communication
+##########################################
+---
+# Pod-level ingress for clustermesh-apiserver (etcd on 2379).
+#
+# Two source-identity patterns must be allowed depending on which peer-node
+# IP the remote kvstoremesh dials:
+#
+# 1. Peer dials a node that does NOT host the backend pod
+#    Example: gcore-agent → 95.216.171.30:32379 (nd01), backend pod on nd02.
+#    Cilium NodePort handler SNATs to cilium_host of the receiving node and
+#    tunnels to the backend node. At pod ingress source identity = `remote-node`.
+#
+# 2. Peer dials a node that DOES host the backend pod
+#    Example: gcore-agent → 135.181.106.231:32379 (nd02), backend pod on nd02.
+#    No cross-node hop, so no SNAT to cilium_host. Source identity is the
+#    *original* — preserved through the cluster-mesh VXLAN as the peer's
+#    pod/host identity (e.g. `k8s:k8s-app=clustermesh-apiserver` from gcore).
+#
+# Without rule (2) listing both peer-cluster ingresses works only as long as
+# the dialer hits a non-hosting node. Once kvstoremesh failovers to the IP of
+# the hosting node, traffic is dropped.
+apiVersion: cilium.io/v2
+kind: CiliumClusterwideNetworkPolicy
+metadata:
+  name: clustermesh-apiserver-pod-ingress
+spec:
+  description: Allow remote clusters to reach clustermesh-apiserver etcd
+  endpointSelector:
+    matchLabels:
+      k8s:io.kubernetes.pod.namespace: kube-system
+      k8s:k8s-app: clustermesh-apiserver
+  ingress:
+    # Case 1: SNAT path — source is the receiving node's cilium_host
+    # - fromEntities:
+    #     - remote-node
+    #     - world
+    #   toPorts:
+    #     - ports:
+    #         - port: "2379"
+    #           protocol: TCP
+    # Case 2: direct path — backend pod lives on the receiving node, source
+    # identity is preserved as the peer cluster's clustermesh-apiserver pod.
+    - fromEndpoints:
+        - matchExpressions:
+            - key: io.cilium.k8s.policy.cluster
+              operator: Exists
+          matchLabels:
+            k8s:io.kubernetes.pod.namespace: kube-system
+            k8s:k8s-app: clustermesh-apiserver
+      toPorts:
+        - ports:
+            - port: "2379"
+              protocol: TCP
+
+
+
+
+##########################################
+# CIDR Groups
+##########################################
+---
+apiVersion: cilium.io/v2
+kind: CiliumCIDRGroup
+metadata:
+  name: cluster-private-ips
+spec:
+  externalCIDRs:
+    - 172.21.0.0/22 # Manassas
+    - 10.4.0.0/16 # Helsinki
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumCIDRGroup
+metadata:
+  name: ssb-provider
+spec:
+  externalCIDRs:
+    - 87.116.0.0/16
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumCIDRGroup
+metadata:
+  name: piano-cato-network
+spec:
+  externalCIDRs:
+    - 209.206.29.0/24
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumCIDRGroup
+metadata:
+  name: loadbalancer-ips
+spec:
+  externalCIDRs:
+    - 65.109.43.90/32
+    - 82.158.117.100/32
+    - 82.158.117.120/32
+    - 82.158.117.131/32
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumCIDRGroup
+metadata:
+  name: gcore-manassas-nodes
+spec:
+  externalCIDRs:
+    - 82.158.117.60/32
+    - 82.158.117.61/32
+
+---
+apiVersion: cilium.io/v2
+kind: CiliumCIDRGroup
+metadata:
+  name: hetzner-helsinki-nodes
+spec:
+  externalCIDRs:
+    - 135.181.106.231/32
+    - 95.216.171.30/32

@@ -183,6 +183,7 @@ function kubernetes_kubeadm_control_plane_init() {
     local control_plane_endpoint=$(manifest_read_yaml ".cluster_network.control_plane_endpoint")
     local pod_network_cidr=$(manifest_read_yaml ".cluster_network.pod_network_cidr")
     local service_dns_domain=$(manifest_read_yaml ".cluster_network.service_dns_domain")
+    local service_cidr=$(manifest_read_yaml ".cluster_network.service_cidr")
     local kube_proxy_enabled=$(manifest_read_yaml ".cluster_network.kube_proxy.enabled")
     local apiserver_advertise_address=$(yq ".kubernetes.apiserver_advertise_address" <<< "${node}")
     local image_repository=$(manifest_read_yaml ".global.image_repository")
@@ -203,6 +204,10 @@ function kubernetes_kubeadm_control_plane_init() {
 
     if [ -n "$service_dns_domain" ] && [ "$service_dns_domain" != "null" ]; then
         kubeadm_init_command+=" --service-dns-domain=$service_dns_domain"
+    fi
+
+    if [ -n "$service_cidr" ] && [ "$service_cidr" != "null" ]; then
+        kubeadm_init_command+=" --service-cidr=$service_cidr"
     fi
 
     if [ -n "$apiserver_advertise_address" ] && [ "$apiserver_advertise_address" != "null" ]; then
@@ -232,6 +237,7 @@ function kubernetes_kubeadm_control_plane_download_kubeconfig() {
 
     local hostname=$(yq ".hostname" <<< "$node")
     local cluster_name=$(manifest_read_yaml ".global.cluster_name")
+    local control_plane_endpoint=$(manifest_read_yaml ".cluster_network.control_plane_endpoint")
     local public_ip=$(yq ".public_ip" <<< "$node")
     local kubeconfig_file="$HOME/.kube/${cluster_name}.kubeconfig"
 
