@@ -62,6 +62,7 @@ Usage: $0 [COMMAND] [OPTIONS]
 Commands:
     apply                     Apply the cluster
     check_ssh_connections     Check SSH connections
+    render_manifest           Print the fully resolved manifest to stdout
     help                      Show this help message
 
 Options:
@@ -73,6 +74,7 @@ Options:
 Examples:
     $0 apply -m nodes.yaml
     $0 check_ssh_connections -m nodes.yaml
+    $0 render_manifest -m nodes.yaml
     $0 help
 
 EOF
@@ -118,6 +120,10 @@ function main() {
                 command="check_ssh_connections"
                 shift
                 ;;
+            render_manifest)
+                command="render_manifest"
+                shift
+                ;;
             help)
                 show_usage
                 exit 0
@@ -147,7 +153,7 @@ function main() {
     done
 
 
-    if [ "$command" == "apply" ]; then
+    if [ "$command" == "apply" ] || [ "$command" == "render_manifest" ]; then
         if [ -z "$manifest_file" ]; then
             print_status "error" "Manifest file is required"
             show_usage
@@ -171,6 +177,10 @@ function main() {
         check_ssh_connections)
             print_status "info" "Checking SSH connections"
             os_check_ssh_connections
+            ;;
+        render_manifest)
+            echo "$MANIFEST_DATA"
+            exit 0
             ;;
         help)
             show_usage
