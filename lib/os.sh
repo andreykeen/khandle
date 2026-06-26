@@ -94,8 +94,10 @@ function os_sysctl() {
 
     # Check if the sysctl parameters are listed in the manifest
     local sysctl_parameters=$(manifest_read_yaml ".global.os.sysctl[]")
-    if [[ "${sysctl_parameters}" == "null" ]] || [[ -z "${sysctl_parameters}" ]]; then
-        print_status "verbose" "${hostname}: Sysctl parameters are not listed in the manifest"
+    local skip_os_configuration=$(manifest_read_yaml ".global.os.skip_os_configuration")
+
+    if [[ "${sysctl_parameters}" == "null" ]] || [[ -z "${sysctl_parameters}" ]] || [[ "${skip_os_configuration}" == "true" ]]; then
+        print_status "verbose" "${hostname}: Sysctl parameters are not listed in the manifest or skip_os_configuration is enabled"
         return
     fi
 
@@ -116,8 +118,10 @@ function os_kernel_modules() {
 
     # Check if the kernel modules are listed in the manifest
     local kernel_modules=$(manifest_read_yaml ".global.os.kernel_modules[]")
-    if [[ "${kernel_modules}" == "null" ]] || [[ -z "${kernel_modules}" ]]; then
-        print_status "verbose" "${hostname}: Kernel modules are not listed in the manifest"
+    local skip_os_configuration=$(manifest_read_yaml ".global.os.skip_os_configuration")
+
+    if [[ "${kernel_modules}" == "null" ]] || [[ -z "${kernel_modules}" ]] || [[ "${skip_os_configuration}" == "true" ]]; then
+        print_status "verbose" "${hostname}: Kernel modules are not listed in the manifest or skip_os_configuration is enabled"
         return
     fi
 

@@ -7,8 +7,10 @@ function packages_apt_install() {
 
     # Check if the APT packages are listed in the manifest
     local apt_packages=$(manifest_read_yaml ".global.os.apt_packages[]")
-    if [[ "${apt_packages}" == "null" ]] || [[ -z "${apt_packages}" ]]; then
-        print_status "verbose" "${hostname}: APT packages are not listed in the manifest"
+    local skip_os_configuration=$(manifest_read_yaml ".global.os.skip_os_configuration")
+
+    if [[ "${apt_packages}" == "null" ]] || [[ -z "${apt_packages}" ]] || [[ "${skip_os_configuration}" == "true" ]]; then
+        print_status "verbose" "${hostname}: APT packages are not listed in the manifest or skip_os_configuration is enabled"
         return
     fi
 
@@ -78,7 +80,7 @@ function packages_haproxy_install() {
     run_commands_on_node "${node}" "sudo whereis haproxy | sed 's/^.*://g'"
     if [[ -z "$RETURN_OUTPUT" ]]; then
         print_status "info" "${hostname}: Installing haproxy"
-        run_commands_on_node "${node}" "sudo apt-get update && sudo apt-get install -y haproxy \
+        run_commands_on_node "${node}" "sudo apt-get update && sudo apt-get install -y haproxy=2.8.16-0ubuntu0.24.04.2 \
             && sudo systemctl enable --now haproxy && sudo systemctl start haproxy"
     else
         print_status "verbose" "${hostname}: haproxy is already installed"
