@@ -16,11 +16,26 @@ function packages_apt_install() {
 
     local apt_packages_string=$(echo "${apt_packages[@]}" | tr '\n' ' ')
 
-    print_status "info" "${hostname}: Installing APT packages: ${apt_packages_string}"
-    run_commands_on_node "${node}" "sudo apt-get update && \
-        sudo apt-get install -y ${apt_packages_string}"
+    # Check which packages from the list are not installed yet
+    run_commands_on_node "${node}" "for pkg in ${apt_packages_string}; do dpkg-query -W -f='\${Status}' \"\$pkg\" 2>/dev/null | grep -q 'install ok installed' || echo \"\$pkg\"; done | tr '\n' ' '"
+    local missing_packages=$(echo "${RETURN_OUTPUT}" | xargs)
 
-    run_commands_on_node "${node}" "sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq"
+    if [[ -z "${missing_packages}" ]]; then
+        print_status "verbose" "${hostname}: All APT packages are already installed: ${apt_packages_string}"
+    else
+        print_status "info" "${hostname}: Installing missing APT packages: ${missing_packages}"
+        run_commands_on_node "${node}" "sudo apt-get update && \
+            sudo apt-get install -y ${missing_packages}"
+    fi
+
+    # Install yq
+    run_commands_on_node "${node}" "yq --version 2>/dev/null | grep -q 'https://github.com/mikefarah/yq/' && echo 'installed' || echo 'notinstalled'"
+    if [[ "${RETURN_OUTPUT}" == "notinstalled" ]]; then
+        print_status "info" "${hostname}: Installing yq"
+        run_commands_on_node "${node}" "sudo curl -fsSL https://github.com/mikefarah/yq/releases/latest/download/yq_linux_amd64 -o /usr/local/bin/yq && sudo chmod +x /usr/local/bin/yq"
+    else
+        print_status "verbose" "${hostname}: yq is already installed"
+    fi
 }
 
 
