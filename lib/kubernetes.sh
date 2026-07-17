@@ -7,7 +7,7 @@ function kubernetes_set_apt_repository() {
     local version_full=$(yq ".kubernetes.version" <<< "${node}")
     local version_minor=$(echo "${version_full}" | awk -F'.' '{print $1 "." $2}')
 
-    run_commands_on_node "${node}" "if [ -f /etc/apt/sources.list.d/kubernetes.list ]; then sudo grep -w \"v${version_minor}\" /etc/apt/sources.list.d/kubernetes.list || true; fi";
+    run_commands_on_node "${node}" "if sudo test -f /etc/apt/sources.list.d/kubernetes.list; then sudo grep -w \"v${version_minor}\" /etc/apt/sources.list.d/kubernetes.list || true; fi";
     if [[ -n "${RETURN_OUTPUT}" ]]; then
         print_status "verbose" "${hostname}: APT repository for Kubernetes ${version_minor}.* version is already set"
         return
@@ -69,7 +69,7 @@ function kubernetes_kubeadm_upgrade() {
     local node_is_control_plane=$(yq ".control_plane" <<< "${node}")
 
     # Check if the node is joined to the cluster
-    run_commands_on_node "${node}" "test -f /etc/kubernetes/kubelet.conf && echo 'exists' || echo 'doesnotexist'"
+    run_commands_on_node "${node}" "sudo test -f /etc/kubernetes/kubelet.conf && echo 'exists' || echo 'doesnotexist'"
     if [[ "${RETURN_OUTPUT}" == "doesnotexist" ]]; then
         print_status "verbose" "${hostname}: Kubernetes node is not joined to the cluster. Skipping upgrade"
         return
@@ -172,7 +172,7 @@ function kubernetes_kubeadm_control_plane_init() {
     local node="$1"
     local hostname=$(yq ".hostname" <<< "${node}")
 
-    run_commands_on_node "${node}" "test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
+    run_commands_on_node "${node}" "sudo test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
     if [[ "${RETURN_OUTPUT}" == "exists" ]]; then
         print_status "verbose" "${hostname}: Control plane is already initialised"
         return
@@ -262,7 +262,7 @@ function kubernetes_kubeadm_control_plane_join() {
     local node="$1"
     local hostname=$(yq ".hostname" <<< "${node}")
 
-    run_commands_on_node "${node}" "test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
+    run_commands_on_node "${node}" "sudo test -f /etc/kubernetes/manifests/kube-apiserver.yaml && echo 'exists' || echo 'doesnotexist'"
     if [[ "${RETURN_OUTPUT}" == "exists" ]]; then
         print_status "verbose" "${hostname}: The node is already joined to the control plane"
         return
@@ -294,7 +294,7 @@ function kubernetes_kubeadm_worker_join() {
     local node="$1"
     local hostname=$(yq ".hostname" <<< "${node}")
 
-    run_commands_on_node "${node}" "test -f /etc/kubernetes/kubelet.conf && echo 'exists' || echo 'doesnotexist'"
+    run_commands_on_node "${node}" "sudo test -f /etc/kubernetes/kubelet.conf && echo 'exists' || echo 'doesnotexist'"
     if [[ "${RETURN_OUTPUT}" == "exists" ]]; then
         print_status "verbose" "${hostname}: The node is already joined to the cluster"
         return
@@ -362,7 +362,7 @@ EOF"
     if [[ -n "${kubelet_kubeadm_args}" && "${kubelet_kubeadm_args}" != "null" ]]; then
         print_status "verbose" "${hostname}: Checking Kubeadm flags env file"
 
-        run_commands_on_node "${node}" "if [ -f /var/lib/kubelet/kubeadm-flags.env ]; then sudo cat /var/lib/kubelet/kubeadm-flags.env; fi"
+        run_commands_on_node "${node}" "if sudo test -f /var/lib/kubelet/kubeadm-flags.env; then sudo cat /var/lib/kubelet/kubeadm-flags.env; fi"
         local kubeadm_flags_env_output="${RETURN_OUTPUT}"
 
         if [[ -z "${kubeadm_flags_env_output}" ]]; then
