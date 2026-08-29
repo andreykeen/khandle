@@ -92,10 +92,21 @@ function packages_haproxy_install() {
         return
     fi
 
+    # Pin haproxy to the Ubuntu archive, so that a third-party APT repository
+    # configured on the node cannot provide the package instead. The pin is
+    # narrow on purpose: it only affects haproxy, every other package keeps
+    # whatever candidate APT would normally pick. Priority above 1000 also
+    # allows a downgrade if a third-party version is already installed.
+    run_commands_on_node "${node}" "sudo tee /etc/apt/preferences.d/99-haproxy-from-ubuntu > /dev/null <<EOF
+Package: haproxy*
+Pin: release o=Ubuntu
+Pin-Priority: 1001
+EOF"
+
     run_commands_on_node "${node}" "sudo whereis haproxy | sed 's/^.*://g'"
     if [[ -z "$RETURN_OUTPUT" ]]; then
         print_status "info" "${hostname}: Installing haproxy"
-        run_commands_on_node "${node}" "sudo apt-get update && sudo apt-get install -y haproxy=2.8.16-0ubuntu0.24.04.2 \
+        run_commands_on_node "${node}" "sudo apt-get update && sudo apt-get install -y haproxy \
             && sudo systemctl enable --now haproxy && sudo systemctl start haproxy"
     else
         print_status "verbose" "${hostname}: haproxy is already installed"

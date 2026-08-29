@@ -101,11 +101,22 @@ function os_sysctl() {
         return
     fi
 
-    print_status "info" "${hostname}: Configuring sysctl"
-    run_commands_on_node "${node}" "sudo tee /etc/sysctl.d/khandle.conf > /dev/null <<EOF
+    # Create a new sysctl config file in /tmp
+    run_commands_on_node "${node}" "sudo tee /tmp/khandle-sysctl.conf > /dev/null <<EOF
 ${sysctl_parameters}
-EOF
-sudo sysctl -p /etc/sysctl.d/khandle.conf"
+EOF"
+
+    # diff also writes to stderr (which is captured as well) when the file does not
+    # exist on the node yet, so a missing file produces non-empty output too
+    run_commands_on_node "${node}" "sudo diff -q /tmp/khandle-sysctl.conf /etc/sysctl.d/khandle.conf || true"
+    # If the return output is not empty, then update the sysctl config file
+    if [[ -n "$RETURN_OUTPUT" ]]; then
+        print_status "info" "${hostname}: Configuring sysctl"
+        run_commands_on_node "${node}" "sudo mv /tmp/khandle-sysctl.conf /etc/sysctl.d/khandle.conf && sudo sysctl -p /etc/sysctl.d/khandle.conf"
+    else
+        print_status "verbose" "${hostname}: Sysctl config file is already up to date"
+        run_commands_on_node "${node}" "sudo rm -f /tmp/khandle-sysctl.conf"
+    fi
 }
 
 
@@ -125,9 +136,38 @@ function os_kernel_modules() {
         return
     fi
 
-    print_status "info" "${hostname}: Loading modules"
-    run_commands_on_node "${node}" "sudo tee /etc/modules-load.d/khandle.conf > /dev/null <<EOF
+    local kernel_modules_string=$(echo "${kernel_modules[@]}" | tr '\n' ' ')
+
+    # Create a new modules-load config file in /tmp
+    run_commands_on_node "${node}" "sudo tee /tmp/khandle-modules-load.conf > /dev/null <<EOF
 ${kernel_modules}
-EOF
-sudo modprobe $(echo "${kernel_modules[@]}" | tr '\n' ' ')"
+EOF"
+
+    # diff also writes to stderr (which is captured as well) when the file does not
+    # exist on the node yet, so a missing file produces non-empty output too
+    run_commands_on_node "${node}" "sudo diff -q /tmp/khandle-modules-load.conf /etc/modules-load.d/khandle.conf || true"
+    local modules_config_diff="${RETURN_OUTPUT}"
+
+    # A matching config file only guarantees the modules are loaded on the next boot,
+    # so check which modules are missing on the running kernel as well. /sys/module is
+    # used instead of lsmod, because it also covers modules built into the kernel.
+    run_commands_on_node "${node}" "for mod in ${kernel_modules_string}; do test -d \"/sys/module/\$(echo \"\$mod\" | sed 's/-/_/g')\" || echo \"\$mod\"; done | tr '\n' ' '"
+    local unloaded_modules=$(echo "${RETURN_OUTPUT}" | xargs)
+
+    # If the config file differs or some modules are not loaded, then update the
+    # config file and load the modules
+    if [[ -n "${modules_config_diff}" ]] || [[ -n "${unloaded_modules}" ]]; then
+        if [[ -n "${unloaded_modules}" ]]; then
+            print_status "info" "${hostname}: Loading modules (not loaded: ${unloaded_modules})"
+        else
+            print_status "info" "${hostname}: Loading modules"
+        fi
+        # -a is required to load several modules at once, otherwise modprobe treats
+        # everything after the first name as parameters for that first module
+        run_commands_on_node "${node}" "sudo mv /tmp/khandle-modules-load.conf /etc/modules-load.d/khandle.conf && \
+            sudo modprobe -a ${kernel_modules_string}"
+    else
+        print_status "verbose" "${hostname}: Modules-load config file is already up to date and all modules are loaded"
+        run_commands_on_node "${node}" "sudo rm -f /tmp/khandle-modules-load.conf"
+    fi
 }
